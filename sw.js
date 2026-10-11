@@ -1,6 +1,6 @@
 // 인터넷 없이도 앱이 열리도록 파일을 저장해 두는 파일입니다.
 // 앱 파일(index.html)을 바꿔 올릴 때는 아래 숫자를 하나 올려 주세요. 예: uta-v10 → uta-v11
-const V="uta-v14";
+const V="uta-v17";
 self.addEventListener("install",e=>self.skipWaiting());
 self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==V).map(k=>caches.delete(k)))).then(()=>clients.claim())));
 self.addEventListener("fetch",e=>{const r=e.request;if(r.method!=="GET"||new URL(r.url).origin!==location.origin)return;

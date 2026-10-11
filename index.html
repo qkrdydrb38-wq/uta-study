@@ -40,7 +40,8 @@ body.focus header{display:none}
 body.focus main{height:100%;padding:6px}
 #fbtn{position:fixed;top:6px;right:6px;z-index:7;display:none;min-height:36px;padding:0 10px;opacity:.85}
 body.focus #fbtn{display:block}
-@media(max-width:900px){.study{grid-template-columns:1fr;height:auto}}
+.lytb{position:sticky;top:-14px;z-index:3;background:var(--card);margin:-14px -14px 8px;padding:10px 14px;border-bottom:1px solid var(--bd);border-radius:16px 16px 0 0}
+@media(max-width:900px){.study{grid-template-columns:1fr;height:auto}.study .col{overflow:visible}.lytb{top:0;border-radius:0}}
 #ai,#nml,#aih,#tp{display:none!important}
 .apphint{display:block!important}
 </style></head><body>
@@ -80,6 +81,7 @@ function theme(){document.documentElement.dataset.theme=st.set.dark?"dark":"ligh
 function lineEnd(i){const n=st.ts[i+1];return n!=null?n:(audio.duration||1e9)}
 function tick(){
  const t=audio.currentTime,p=$("#pos");if(p){p.value=t;p.max=audio.duration||0;$("#cur").textContent=fmt(t)}
+ if(audioFor&&audioFor!==SONG.id)return;
  if(loop&&st.ts[sel]!=null&&t>=lineEnd(sel)){audio.currentTime=st.ts[sel]}
  let c=-1;SONG.lines.forEach((l,i)=>{if(st.ts[i]!=null&&st.ts[i]<=t)c=i});
  if(c>=0&&c!==sel&&!audio.paused&&!loop){sel=c;mark(true)}}
@@ -90,7 +92,7 @@ document.querySelector("header").onclick=e=>{const v=e.target.dataset.v;if(v){vi
 // ===== 학습 화면 =====
 function rStudy(){
  $("#m").innerHTML=`<div class="study">
- <div class="col"><div class="cover"${SONG.img?` style="background:center/cover url(${SONG.img})"`:""}>${SONG.img?"":"♪"}</div><h3 style="margin:10px 0 0">${esc(SONG.title)}</h3><div class="mut">${esc(SONG.artist)}</div>
+ <div class="col"><div class="cover"${SONG.img?` style="background:center/cover url(${SONG.img})"`:""}>${SONG.img?"":(SONG.kind==="story"?"📖":"♪")}</div><h3 style="margin:10px 0 0">${esc(SONG.title)}</h3><div class="mut">${esc(SONG.artist)}</div>
  <div class="row"><input type="file" id="f" accept="audio/*"><button id="fd" style="min-height:36px">🗑 저장한 파일 지우기</button></div><div class="mut" id="fmsg">음악 파일을 선택하면 재생할 수 있어요. (MP3, M4A, WAV 등)</div>
  <div class="row"><input type="range" id="pos" min="0" max="0" step="0.1" value="0"></div>
  <div class="row mut"><span id="cur">0:00</span>/<span id="dur">0:00</span></div>
@@ -100,7 +102,7 @@ function rStudy(){
  <div class="row"><button id="lp" class="${loop?"on":""}">🔁 선택 줄 반복</button></div>
  <div class="row"><button id="setT">⏱ 선택 줄 시작 시간 = 지금 재생 위치</button></div>
  <div class="mut">시간을 지정한 줄만 음악에 맞춰 강조돼요. 지정하지 않으면 일반 텍스트처럼 읽을 수 있어요.</div></div>
- <div class="col"><div class="row"><button id="tf" class="${st.set.furi?"on":""}">후리가나</button><button id="tpr" class="${st.set.pr!==false?"on":""}">발음</button><button id="tt" class="${st.set.tr?"on":""}">번역</button><button id="tp" class="${st.set.pen!==false?"on":""}">✏️ 펜 해석</button>
+ <div class="col"><div class="row lytb"><button id="tf" class="${st.set.furi?"on":""}">후리가나</button><button id="tpr" class="${st.set.pr!==false?"on":""}">발음</button><button id="tt" class="${st.set.tr?"on":""}">번역</button><button id="tp" class="${st.set.pen!==false?"on":""}">✏️ 펜 해석</button>
  글자 <input type="range" id="sz" min="18" max="48" value="${st.set.size}"></div><div id="ly"></div></div>
  <div class="col" id="pn"></div></div>`;
  drawLy();drawPanel();
@@ -229,21 +231,32 @@ function rQuiz(){
  qbind();document.querySelectorAll(".opt").forEach(b=>b.onclick=()=>{const ok=b.dataset.o===v[F];st.log[today()]=(st.log[today()]||0)+1;v.lv=ok?(v.lv||0)+1:0;v.due=addDays([1,2,4,7,14][Math.min(v.lv,4)]);save();
   document.querySelectorAll(".opt").forEach(x=>{x.disabled=true;if(x.dataset.o===v[F])x.classList.add("ok")});if(!ok)b.classList.add("ng");
   $("#fb").innerHTML=`<p>${ok?"정답!":"아쉬워요."} ${esc(v.t)} = ${esc(v.r)} (${esc(v.m)})</p><button class="pri" id="nx">다음 문제</button>`;$("#nx").onclick=rQuiz})}
-// ===== 줄 읽기 연습 =====
-let lineIdx=0,showF=false,showT=false,showP=false,lineCnt=false;
-function rLine(){const l=SONG.lines[lineIdx]||(lineIdx=0,SONG.lines[0]);
- $("#m").innerHTML=`<div class="col" style="max-width:800px;margin:auto;text-align:center"><div class="mut">${esc(SONG.title)} · ${lineIdx+1} / ${SONG.lines.length}</div><div class="jp ${showF?"":"nofuri"}" style="font-size:40px;margin:24px 0">${l.w.map(w=>w[1]?`<ruby>${w[0]}<rt>${w[1]}</rt></ruby>`:esc(w[0])).join("")}</div>${showP?`<div class="tr" style="font-size:20px;margin-bottom:8px;color:var(--ac)">${esc(l.p||"(발음이 없어요)")}</div>`:""}${showT?`<div class="tr" style="font-size:20px;margin-bottom:12px">${esc(l.k||"(번역이 없어요)")}</div>`:""}
+// ===== 줄 읽기 연습: 모든 노래에서 무작위로 (영어만 있는 줄은 뺌) =====
+let lineCur=null,lineHist=[],showF=false,showT=false,showP=false,lineCnt=false;
+const findSong=id=>id==="sample"?SAMPLE:st.songs.find(x=>x.id===id);
+function linePool(){const out=[];[SAMPLE,...st.songs].forEach(x=>(x.lines||[]).forEach((l,i)=>{if(/[぀-ヿ一-龯]/.test(l.w.map(w=>w[0]).join("")))out.push({sid:x.id,i})}));return out}
+function pickLine(){const pool=linePool();if(!pool.length)return null;let c,n=0;
+ do{c=pool[Math.floor(Math.random()*pool.length)];n++}while(pool.length>1&&lineCur&&c.sid===lineCur.sid&&c.i===lineCur.i&&n<20);return c}
+function rLine(){const ok=lineCur&&findSong(lineCur.sid)&&findSong(lineCur.sid).lines[lineCur.i];if(!ok)lineCur=pickLine();
+ if(!lineCur){$("#m").innerHTML='<div class="col" style="max-width:800px;margin:auto"><h3>줄 읽기</h3><p class="mut">연습할 일본어 줄이 없어요. 노래를 추가해 주세요.</p></div>';return}
+ const so=findSong(lineCur.sid),l=so.lines[lineCur.i];
+ $("#m").innerHTML=`<div class="col" style="max-width:800px;margin:auto;text-align:center"><div class="mut">🔀 모든 노래에서 무작위 · ${esc(so.title)} ${lineCur.i+1}번째 줄</div><div class="jp ${showF?"":"nofuri"}" style="font-size:40px;margin:24px 0">${l.w.map(w=>w[1]?`<ruby>${w[0]}<rt>${w[1]}</rt></ruby>`:esc(w[0])).join("")}</div>${showP?`<div class="tr" style="font-size:20px;margin-bottom:8px;color:var(--ac)">${esc(l.p||"(발음이 없어요)")}</div>`:""}${showT?`<div class="tr" style="font-size:20px;margin-bottom:12px">${esc(l.k||"(번역이 없어요)")}</div>`:""}
  <div class="mut">소리 내어 읽어 본 뒤 후리가나를 공개해 확인해 보세요.</div>
  <div class="row" style="justify-content:center"><button id="lf" class="pri">후리가나 ${showF?"숨기기":"공개"}</button><button id="lpr">발음 ${showP?"숨기기":"공개"}</button><button id="lt">번역 ${showT?"숨기기":"공개"}</button><button id="lp2">▶ 이 줄 재생</button></div>
- <div class="row" style="justify-content:center"><button id="lb">← 이전 줄</button><button id="ln" class="pri">다음 줄 →</button></div><div id="lm" class="mut"></div></div>`;
- const go=d=>{lineIdx=(lineIdx+d+SONG.lines.length)%SONG.lines.length;showF=false;showT=false;showP=false;lineCnt=false;rLine()};
+ <div class="row" style="justify-content:center"><button id="lb" ${lineHist.length?"":"disabled"}>← 앞에 본 줄</button><button id="ln" class="pri">🔀 다음 줄</button></div><div id="lm" class="mut"></div></div>`;
+ const reset=()=>{showF=false;showT=false;showP=false;lineCnt=false};
+ $("#ln").onclick=()=>{lineHist.push(lineCur);if(lineHist.length>50)lineHist.shift();lineCur=pickLine();reset();rLine()};
+ $("#lb").onclick=()=>{if(!lineHist.length)return;lineCur=lineHist.pop();reset();rLine()};
  $("#lpr").onclick=()=>{showP=!showP;rLine()};
  $("#lf").onclick=()=>{showF=!showF;if(showF&&!lineCnt){lineCnt=true;st.lr=st.lr||{};st.lr[today()]=(st.lr[today()]||0)+1;save()}rLine()};
- $("#lt").onclick=()=>{showT=!showT;rLine()};$("#lb").onclick=()=>go(-1);$("#ln").onclick=()=>go(1);
- $("#lp2").onclick=()=>{const m=$("#lm"),t=st.ts[lineIdx];if(!audio.getAttribute("src")){m.textContent="먼저 학습 화면에서 음악 파일을 추가해 주세요.";return}
-  if(t==null){m.textContent="이 줄은 시작 시간이 없어요. 학습 화면에서 지정해 주세요.";return}
-  const end=lineEnd(lineIdx),chk=()=>{if(audio.currentTime>=end){audio.pause();audio.removeEventListener("timeupdate",chk)}};
-  audio.currentTime=t;audio.addEventListener("timeupdate",chk);audio.play().catch(()=>m.textContent="재생할 수 없어요. 파일을 다시 선택해 주세요.")}}
+ $("#lt").onclick=()=>{showT=!showT;rLine()};
+ $("#lp2").onclick=async()=>{const m=$("#lm"),ts=(so.id===SONG.id?st.ts:st.tsAll[so.id])||{},t=ts[lineCur.i];
+  if(t==null){m.textContent="이 줄은 시작 시간이 없어요. 학습 화면에서 이 노래를 열고 지정해 주세요.";return}
+  if(audioFor!==so.id||!audio.getAttribute("src")){let b=null;try{b=await aGet(so.id)}catch(e){}
+   if(!b){m.textContent="이 노래의 음악 파일이 없어요. 학습 화면에서 이 노래를 열고 음악 파일을 추가해 주세요.";return}
+   audio.pause();audio.src=URL.createObjectURL(b);audioFor=so.id;await new Promise(r=>{audio.addEventListener("loadedmetadata",r,{once:true});audio.load()})}
+  const nx=ts[lineCur.i+1],end=nx!=null?nx:(audio.duration||1e9),chk=()=>{if(audio.currentTime>=end){audio.pause();audio.removeEventListener("timeupdate",chk)}};
+  audio.currentTime=t;audio.addEventListener("timeupdate",chk);audio.play().catch(()=>m.textContent="재생할 수 없어요. 학습 화면에서 음악 파일을 다시 선택해 주세요.")}}
 // ===== 학습 기록 =====
 function rLog(){st.lr=st.lr||{};const rows=[];
  for(let i=0;i<30;i++){const d=addDays(-i),q=st.log[d]||0,l=st.lr[d]||0,w=st.vocab.filter(v=>v.date===d).length;if(q||l||w)rows.push([d,q,l,w])}
@@ -252,7 +265,7 @@ function rLog(){st.lr=st.lr||{};const rows=[];
 async function saveFile(n,d){const m=$("#msg");try{const dl=typeof claude!=="undefined"?await claude.use("downloads"):null;if(dl){await dl.save({filename:n,data:d})}else{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([d]));a.download=n;document.body.appendChild(a);a.click();a.remove()}m.textContent="저장했어요. 다운로드 폴더를 확인해 주세요."}catch(e){m.textContent=e&&e.code==="declined"?"저장을 취소했어요.":"파일을 저장하지 못했어요."}}
 // ===== 설정 / 백업 =====
 function rSet(){
- $("#m").innerHTML=`<div class="col" style="max-width:700px;margin:auto"><h3>설정 <span class="mut">(앱 버전 v14)</span></h3>
+ $("#m").innerHTML=`<div class="col" style="max-width:700px;margin:auto"><h3>설정 <span class="mut">(앱 버전 v17)</span></h3>
  <div class="row"><button id="dk">${st.set.dark?"☀️ 밝은 테마":"🌙 어두운 테마"}</button></div>
  <h3>백업</h3><div class="mut">브라우저 데이터를 지우면 저장한 단어가 사라질 수 있어요. 가끔 백업 파일을 받아 두세요.</div>
  <div class="row"><button id="ex" class="pri">백업 파일 받기</button><button id="cv">단어장 CSV 받기</button><input type="file" id="im" accept=".json"></div><div id="msg" class="mut"></div>
@@ -274,7 +287,7 @@ function rHome(){const all=[SAMPLE,...st.songs],td=today();
  <div class="row mut"><span>오늘 푼 문제 ${st.log[td]||0}개</span><span>· 오늘 저장한 단어 ${st.vocab.filter(v=>v.date===td).length}개</span><span>· 전체 저장 단어 ${st.vocab.length}개</span><span>· 오늘 복습할 단어 ${st.vocab.filter(isDue).length}개</span></div>
  <button class="pri" id="go" style="width:100%;min-height:56px;margin:8px 0">▶ 이어서 학습: ${esc(SONG.title)}</button>
  <div class="row"><button data-v="add">➕ 노래 추가</button><button onclick="location.href='maker.html'">🪄 가사 정리기</button><button data-v="vocab">🔖 단어장</button><button data-v="quiz">✏️ 읽기 연습</button><button data-v="line">📖 줄 읽기</button><button data-v="log">📅 학습 기록</button><button data-v="set">⚙️ 설정</button></div>
- <h3>내 노래</h3>${all.map(s=>`<div class="vi"><div><b>${esc(s.title)}</b> <span class="mut">${esc(s.artist||"")}</span></div><div><button data-o="${s.id}">열기</button>${s.id!=="sample"?` <button data-m="${s.id}">수정</button> <button data-x="${s.id}">삭제</button>`:""}</div></div>`).join("")}</div>`;
+ <h3>내 노래</h3>${all.map(s=>`<div class="vi"><div><b>${s.kind==="story"?"📖 ":""}${esc(s.title)}</b> <span class="mut">${esc(s.artist||"")}</span></div><div><button data-o="${s.id}">열기</button>${s.id!=="sample"?` <button data-m="${s.id}">수정</button> <button data-x="${s.id}">삭제</button>`:""}</div></div>`).join("")}</div>`;
  document.querySelectorAll("#m [data-v]").forEach(b=>b.onclick=()=>{view=b.dataset.v;render()});
  $("#go").onclick=()=>{view="study";render()};
  document.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{view="add";rAdd(b.dataset.m)});

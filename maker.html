@@ -30,15 +30,15 @@ label{display:flex;gap:6px;align-items:center;min-height:36px}
 #warns .it input{min-height:40px;border:1px solid var(--bd);border-radius:10px;padding:0 8px;background:var(--bg);width:9em}
 #warns .seg{font-family:"Hiragino Mincho ProN","Noto Serif JP",serif;font-size:18px;color:var(--warn)}
 </style></head><body><div class="wrap">
-<div class="row" style="justify-content:space-between;margin:0"><h1>가사 정리기</h1><span class="mut">v14</span> <button onclick="location.href='./'">← 앱으로</button></div>
+<div class="row" style="justify-content:space-between;margin:0"><h1>가사 정리기</h1><span class="mut">v17</span> <button onclick="location.href='./'">← 앱으로</button></div>
 <div class="mut">붙여 넣은 가사를 UTA STUDY 앱에 넣을 수 있는 형태(漢字(よみ))로 정리해요. 앱 안의 일본어 사전을 쓰고, Claude는 쓰지 않아요. 직접 쓴 가사나 이용할 권리가 있는 가사만 개인 공부용으로 넣어 주세요.</div>
 
 <div class="grid">
 <div class="col">
  <h2>1. 붙여 넣기</h2>
- <div class="row"><input id="ti" class="in" placeholder="노래 제목" style="flex:2;min-width:160px"><input id="ar" class="in" placeholder="가수 (선택)" style="flex:1;min-width:120px"></div>
+ <div class="row"><input id="ti" class="in" placeholder="제목 (노래·이야기)" style="flex:2;min-width:160px"><input id="ar" class="in" placeholder="가수 (선택)" style="flex:1;min-width:120px"></div>
  <div class="row">형식
-  <select id="mode" style="min-height:44px"><option value="3">가사 / 발음 / 번역 (영어 줄이 섞여도 돼요)</option><option value="2">일본어 / 번역 (2줄씩)</option><option value="1">일본어만</option></select></div>
+  <select id="mode" style="min-height:44px"><option value="3">가사 / 발음 / 번역 (영어 줄이 섞여도 돼요)</option><option value="2">일본어 / 번역 (2줄씩)</option><option value="1">일본어만</option><option value="s">📖 이야기·문장 (문장마다 한 줄로 나누기)</option></select></div>
  <label><input type="checkbox" id="stuck" checked> 한자 뒤에 읽기가 붙어서 복사됨 (예: 漢字かんじ)</label>
  <textarea id="src" class="in" rows="16" placeholder="여기에 붙여 넣으세요.&#10;예)&#10;明日あしたも君きみに会あいたい&#10;아시타모 키미니 아이타이&#10;내일도 너를 만나고 싶어"></textarea>
  <div class="row"><button class="pri" id="go">🪄 정리하기</button><button id="clr">지우기</button></div>
@@ -91,13 +91,25 @@ function group(text,mode){const out=[];let cur=null;
   else if(mode==="2")tr=g.ko.join(" ");
   return{jp:g.jp,tr,pr,note,en:g.en}})}
 
+// ===== 이야기·문장: 붙여 넣은 글을 문장마다 한 줄로 나눔 =====
+function splitStory(text){
+ const t=text.replace(/\r/g,"").split(/\n+/).map(x=>x.trim()).filter(Boolean).join("");
+ // 복사하면서 일본어 글자 사이에 끼어든 띄어쓰기를 없앰 (예: 「どんで す」 → 「どんです」)
+ const c=t.replace(/([、-ヿ一-龯！-～])[ 　\t]+(?=[、-ヿ一-龯！-～])/g,"$1");
+ const out=[];let cur="";
+ for(let i=0;i<c.length;i++){const ch=c[i];cur+=ch;
+  if("。！？!?".includes(ch)){if(c[i+1]==="」"||c[i+1]==="』")continue;out.push(cur.trim());cur=""}
+  else if(ch==="」"||ch==="』"){if(/[。！？!?]$/.test(cur.slice(0,-1))||c[i+1]==="「"){out.push(cur.trim());cur=""}}}
+ if(cur.trim())out.push(cur.trim());
+ return out.filter(x=>/[぀-ヿ一-龯]/.test(x))}
+$("#mode").onchange=()=>{const s=$("#mode").value==="s";$("#stuck").closest("label").style.display=s?"none":""};
 // ===== 정리하기 =====
-$("#go").onclick=async()=>{const msg=$("#msg"),mode=$("#mode").value,gs=group($("#src").value,mode);
+$("#go").onclick=async()=>{const msg=$("#msg"),mode=$("#mode").value,gs=mode==="s"?splitStory($("#src").value).map(t=>({jp:t,tr:"",pr:"",note:""})):group($("#src").value,mode);
  if(!gs.length){msg.className="warn";msg.textContent="가사 줄(일본어·영어)을 찾지 못했어요. 가사를 붙여 넣었는지 확인해 주세요.";return}
  msg.className="mut";$("#go").disabled=true;
  const t0=Date.now(),iv=setInterval(()=>{msg.textContent="정리하는 중이에요... "+Math.round((Date.now()-t0)/1000)+"초 (처음 한 번은 사전을 준비하느라 오래 걸릴 수 있어요. 그동안 화면은 멈추지 않아요)"},1000);
  msg.textContent="정리하는 중이에요...";
- try{const r=await Promise.race([fwCall("namu",gs.map(g=>g.jp),{stuck:$("#stuck").checked}),new Promise((_,rj)=>setTimeout(()=>rj({code:"timeout"}),180000))]);
+ try{const r=await Promise.race([fwCall("namu",gs.map(g=>g.jp),{stuck:mode==="s"?false:$("#stuck").checked}),new Promise((_,rj)=>setTimeout(()=>rj({code:"timeout"}),180000))]);
   clearInterval(iv);
   $("#ly").value=r.lines.map(x=>x.text).join("\n");$("#tr").value=gs.map(g=>g.tr).join("\n");$("#pr").value=gs.map(g=>g.pr||"").join("\n");
   WARN=[];r.lines.forEach((x,i)=>{x.warn.forEach(o=>{const seg=typeof o==="string"?o:o.seg,k=(seg.match(/^[一-龯々〆]+/)||[""])[0];WARN.push({t:"ly",line:i,seg,k,h:seg.slice(k.length),sug:(o&&o.sug)||"",pr:gs[i].pr||""})});if(gs[i].note)WARN.push({t:"tr",line:i,note:gs[i].note})});
@@ -108,6 +120,43 @@ $("#go").onclick=async()=>{const msg=$("#msg"),mode=$("#mode").value,gs=group($(
  finally{$("#go").disabled=false}};
 $("#clr").onclick=()=>{$("#src").value="";$("#ly").value="";$("#tr").value="";$("#pr").value="";WARN=[];$("#warns").innerHTML="";$("#msg").textContent=""};
 
+// ===== 한글 → 히라가나 (예: 유메 → ゆめ). 헷갈리는 소리(카=か/が 등)는 여러 후보를 만듦 =====
+const H2K=(()=>{
+ const CH=["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+ const JU=["ㅏ","ㅐ","ㅑ","ㅒ","ㅓ","ㅔ","ㅕ","ㅖ","ㅗ","ㅘ","ㅙ","ㅚ","ㅛ","ㅜ","ㅝ","ㅞ","ㅟ","ㅠ","ㅡ","ㅢ","ㅣ"];
+ const JO=["","ㄱ","ㄲ","ㄳ","ㄴ","ㄵ","ㄶ","ㄷ","ㄹ","ㄺ","ㄻ","ㄼ","ㄽ","ㄾ","ㄿ","ㅀ","ㅁ","ㅂ","ㅄ","ㅅ","ㅆ","ㅇ","ㅈ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
+ const V={"ㅏ":"a","ㅐ":"e","ㅔ":"e","ㅓ":"o","ㅗ":"o","ㅜ":"u","ㅡ":"U","ㅣ":"i","ㅑ":"ya","ㅠ":"yu","ㅛ":"yo","ㅕ":"yo","ㅘ":"wa","ㅝ":"wo","ㅟ":"i","ㅚ":"e","ㅢ":"i","ㅖ":"e","ㅒ":"e","ㅙ":"e","ㅞ":"e"};
+ const ROWS={"":"あいうえお",k:"かきくけこ",g:"がぎぐげご",s:"さしすせそ",z:"ざじずぜぞ",t:"たちつてと",d:"だぢづでど",n:"なにぬねの",h:"はひふへほ",b:"ばびぶべぼ",p:"ぱぴぷぺぽ",m:"まみむめも",r:"らりるれろ"};
+ const C={"ㄱ":["k","g"],"ㄲ":["k"],"ㅋ":["k"],"ㄴ":["n"],"ㄷ":["t","d"],"ㄸ":["t"],"ㅌ":["t"],"ㄹ":["r"],"ㅁ":["m"],"ㅂ":["b","p","h"],"ㅃ":["p"],"ㅍ":["p","h"],"ㅎ":["h"],"ㅅ":["s"],"ㅆ":["s","t"],"ㅇ":[""],"ㅈ":["z","j"],"ㅉ":["t","ch"],"ㅊ":["ch","t"]};
+ const IDX={a:0,i:1,u:2,U:2,e:3,o:4};
+ function one(c,v){
+  if(c==="")return v==="ya"?["や"]:v==="yu"?["ゆ"]:v==="yo"?["よ"]:v==="wa"?["わ"]:v==="wo"?["を","お"]:["あいううえお"["aiuUeo".indexOf(v)]];
+  if(c==="ch"){const m={a:"ちゃ",i:"ち",u:"ちゅ",U:"つ",e:"ちぇ",o:"ちょ",ya:"ちゃ",yu:"ちゅ",yo:"ちょ",wa:"ちゃ",wo:"ちょ"};return[m[v]]}
+  if(c==="j"){const m={a:"じゃ",i:"じ",u:"じゅ",U:"ず",e:"じぇ",o:"じょ",ya:"じゃ",yu:"じゅ",yo:"じょ",wa:"じゃ",wo:"じょ"};return[m[v]]}
+  const row=ROWS[c];
+  if(v==="ya"||v==="yu"||v==="yo")return[row[1]+{ya:"ゃ",yu:"ゅ",yo:"ょ"}[v]];
+  if(v==="wa")return[row[0]];if(v==="wo")return[row[4]];
+  if(v==="U"&&c==="t")return["つ"];
+  return[row[IDX[v]]]}
+ function syl(ch){const code=ch.charCodeAt(0)-0xAC00;if(code<0||code>11171)return null;
+  const ci=Math.floor(code/588),vi=Math.floor((code%588)/28),fi=code%28,c=CH[ci],v=V[JU[vi]],f=JO[fi];
+  let opts=[];for(const r of C[c])for(const k of one(r,v))if(!opts.includes(k))opts.push(k);
+  const tail=!f?"":"ㄴㅇㅁ".includes(f)?"ん":"ㄹ".includes(f)?"":"っ";
+  return opts.map(o=>o+tail)}
+ // 한글 글자마다 후보를 만들어 조합 (최대 64개)
+ function convert(s){let outs=[""];
+  for(const ch of s.replace(/\s+/g,"")){const o=syl(ch)||[ch.replace(/[ァ-ヶ]/g,x=>String.fromCharCode(x.charCodeAt(0)-0x60))];
+   const nx=[];for(const a of outs)for(const b of o)if(nx.length<64)nx.push(a+b);outs=nx}
+  return outs}
+ const nd=s=>s.normalize("NFD").replace(/[゙゚]/g,"").normalize("NFC");
+ // 한자 뒤에 붙어 온 글자(h)와 맞춰서 정확한 히라가나(탁음 포함)를 골라 줌
+ function suggest(s,h){const cs=convert(s),out=[],add=y=>{if(y&&!out.includes(y))out.push(y)};
+  const nh=nd(h||"");
+  for(const c of cs){const nc=nd(c);if(nc&&nh.startsWith(nc)){const y=h.slice(0,nc.length);add(y);const nxt=h[nc.length];if(nxt&&"うい".includes(nxt))add(y+nxt)}}
+  if(!out.length)for(const c of cs.slice(0,3))add(c); // 붙어 온 글자와 안 맞을 때만 바꾼 그대로를 후보로
+  return out.slice(0,5)}
+ const hasHangul=s=>/[가-힣]/.test(s);
+ return{convert,suggest,hasHangul}})();
 // ===== 확인이 필요한 곳: 누르면 그 위치로 가고, 읽기를 입력해 바로 고칠 수 있음 =====
 let WARN=[],wPos=-1;
 function lineStart(txt,n){let p=0;for(let i=0;i<n;i++){const q=txt.indexOf("\n",p);if(q<0)return-1;p=q+1}return p}
@@ -117,7 +166,8 @@ function goTo(w){const ta=$("#"+w.t),txt=ta.value,ls=lineStart(txt,w.line);if(ls
  ta.focus();ta.setSelectionRange(a,b);
  const lh=parseFloat(getComputedStyle(ta).lineHeight)||28;ta.scrollTop=Math.max(0,w.line*lh-ta.clientHeight/3);
  ta.scrollIntoView({block:"center",behavior:"smooth"})}
-function fixWarn(n){const w=WARN[n],inp=$("#wi"+n),y=(inp&&inp.value||"").trim();
+function fixWarn(n){const w=WARN[n],inp=$("#wi"+n);let y=(inp&&inp.value||"").trim();
+ if(H2K.hasHangul(y)){const sg=H2K.suggest(y,w.h);if(!sg.length){$("#wm"+n).textContent="히라가나로 바꾸지 못했어요. 다르게 적어 보세요.";return}y=sg[0]}
  if(!y){inp.focus();return}
  const ta=$("#ly"),ls=ta.value.split("\n"),line=ls[w.line]||"",f=line.indexOf(w.seg);
  if(f<0){$("#wm"+n).textContent="그 줄에서 이 부분을 찾지 못했어요. 직접 고쳐 주세요.";return}
@@ -132,12 +182,15 @@ function drawWarns(){const left=WARN.filter(w=>!w.done).length;
  if(!WARN.length){$("#warns").innerHTML='<div style="margin-top:8px">자동으로 확인하지 못한 곳은 없어요. 그래도 읽기가 맞는지 한 번 훑어봐 주세요.</div>';return}
  $("#warns").innerHTML=`<div class="row" style="margin-top:10px"><b class="${left?"warn":""}">확인이 필요한 곳 ${left}개 남음</b>${left?'<button id="wn">▶ 다음 위치로</button>':'<span>모두 확인했어요 👍</span>'}</div>`+
   WARN.map((w,n)=>`<div class="it ${w.done?"done":""}"><b>${w.line+1}번째 줄</b> `+(w.t==="ly"
-   ?`<span class="seg">${esc(w.done?w.fixed:w.seg)}</span>${w.done?" ✓ 고쳤어요":`${w.pr?`<div class="mut">발음 참고: <b>${esc(w.pr)}</b></div>`:""}<div class="row"><span class="mut">맞는 것을 누르세요:</span>${cands(w).map(c=>`<button data-c="${n}" data-y="${esc(c.y)}">${esc(c.label)}</button>`).join("")}</div><div class="row"><button data-g="${n}">📍 위치 보기</button><input id="wi${n}" placeholder="직접 입력 (히라가나)"><button class="pri" data-f="${n}">적용</button><span class="mut">후보에 없으면 직접 적어도 돼요</span></div><div id="wm${n}" class="warn"></div>`}`
+   ?`<span class="seg">${esc(w.done?w.fixed:w.seg)}</span>${w.done?" ✓ 고쳤어요":`${w.pr?`<div class="mut">발음 참고: <b>${esc(w.pr)}</b></div>`:""}<div class="row"><span class="mut">맞는 것을 누르세요:</span>${cands(w).map(c=>`<button data-c="${n}" data-y="${esc(c.y)}">${esc(c.label)}</button>`).join("")}</div><div class="row"><button data-g="${n}">📍 위치 보기</button><input id="wi${n}" placeholder="한글로 입력 (예: 유메)"><button class="pri" data-f="${n}">적용</button><span class="mut">후보에 없으면 발음을 한글로 적어 보세요</span></div><div id="ws${n}" class="row"></div><div id="wm${n}" class="warn"></div>`}`
    :`${esc(w.note)}.${w.done?" ✓":`<div class="row"><button data-g="${n}">📍 번역 칸에서 보기</button><button data-ok="${n}">괜찮아요</button></div>`}`)+`</div>`).join("");
  document.querySelectorAll("#warns [data-g]").forEach(b=>b.onclick=()=>{wPos=+b.dataset.g;goTo(WARN[wPos])});
  document.querySelectorAll("#warns [data-c]").forEach(b=>b.onclick=()=>{const n=+b.dataset.c;$("#wi"+n).value=b.dataset.y;fixWarn(n)});
  document.querySelectorAll("#warns [data-f]").forEach(b=>b.onclick=()=>fixWarn(+b.dataset.f));
- document.querySelectorAll("#warns input[id^=wi]").forEach(i=>i.onkeydown=e=>{if(e.key==="Enter")fixWarn(+i.id.slice(2))});
+ document.querySelectorAll("#warns input[id^=wi]").forEach(i=>{const n=+i.id.slice(2);i.onkeydown=e=>{if(e.key==="Enter")fixWarn(n)};
+  i.oninput=()=>{const w=WARN[n],v=i.value.trim(),box=$("#ws"+n);if(!H2K.hasHangul(v)){box.innerHTML="";return}
+   const sg=H2K.suggest(v,w.h);box.innerHTML=sg.length?'<span class="mut">바꾼 결과:</span>'+sg.map(y=>{const rest=w.h.startsWith(y)?w.h.slice(y.length):w.h;return`<button data-s="${n}" data-y="${esc(y)}">${esc(w.k+"("+y+")"+rest)}</button>`}).join(""):'<span class="warn">히라가나로 바꾸지 못했어요</span>';
+   box.querySelectorAll("[data-s]").forEach(b=>b.onclick=()=>{i.value=b.dataset.y;fixWarn(n)})}});
  document.querySelectorAll("#warns [data-ok]").forEach(b=>b.onclick=()=>{WARN[+b.dataset.ok].done=true;drawWarns()});
  const nb=$("#wn");if(nb)nb.onclick=()=>{const idx=WARN.map((w,n)=>w.done?-1:n).filter(n=>n>=0);wPos=idx.find(n=>n>wPos);if(wPos===undefined)wPos=idx[0];goTo(WARN[wPos]);const inp=$("#wi"+wPos);if(inp)setTimeout(()=>inp.scrollIntoView({block:"nearest"}),400)}}
 // ===== 앱 형식으로 바꾸기 (앱의 노래 추가와 같은 방식) =====
@@ -146,7 +199,7 @@ function parseLy(txt,tr,pr){const T0=tr.split("\n").map(s=>s.trim()),LN=txt.spli
 function makeSong(){const m2=$("#msg2"),title=$("#ti").value.trim(),lines=parseLy($("#ly").value,$("#tr").value,$("#pr").value);
  if(!title){m2.className="warn";m2.textContent="노래 제목을 입력해 주세요.";$("#ti").focus();return null}
  if(!lines.length){m2.className="warn";m2.textContent="먼저 「🪄 정리하기」를 눌러 가사를 만들어 주세요.";return null}
- m2.className="mut";return{id:"s"+Date.now(),title,artist:$("#ar").value.trim(),lines}}
+ m2.className="mut";return{id:"s"+Date.now(),title,artist:$("#ar").value.trim(),lines,kind:$("#mode").value==="s"?"story":undefined}}
 $("#sv").onclick=()=>{const s=makeSong();if(!s)return;const m2=$("#msg2");
  try{let d=null;try{d=JSON.parse(localStorage.getItem("uta")||"null")}catch(e){}
   if(!d||!Array.isArray(d.vocab))d={vocab:[],songs:[],ts:{},tsAll:{},cur:"sample",log:{}};
