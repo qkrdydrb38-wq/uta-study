@@ -30,11 +30,56 @@ function load(dic) {
   return loading;
 }
 
+// ===== 가사 정리기용: 한자 뒤에 붙어서 복사된 후리가나를 떼어 「漢字(よみ)」로 바꾸기 =====
+const hasK = (s) => /[一-龯々〆]/.test(s);
+const k2h = (s) => s.replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
+const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const noDaku = (s) => s.normalize("NFD").replace(/[゙゚]/g, ""); // が→か 처럼 탁음 표시를 뺌
+function rd(t, s) { return t.tokenize(s).map((k) => k2h(k.reading && k.reading !== "*" ? k.reading : k.surface_form)).join(""); }
+function furiTok(sf, r) {
+  if (!hasK(sf) || !r || r === "*") return sf;
+  const y = k2h(r), parts = sf.match(/[一-龯々〆]+|[^一-龯々〆]+/g);
+  const m = y.match(new RegExp("^" + parts.map((p) => (hasK(p) ? "(.+?)" : reEsc(k2h(p)))).join("") + "$"));
+  if (!m) return sf;
+  let i = 1;
+  return parts.map((p) => (hasK(p) ? p + "(" + m[i++] + ")" : p)).join("");
+}
+function annotate(t, s) { return t.tokenize(s).map((k) => furiTok(k.surface_form, k.reading || "")).join(""); }
+function detach(t, line) {
+  const seg = line.match(/[一-龯々〆]+|[ぁ-ゖー]+|[^一-龯々〆ぁ-ゖー]+/g) || [];
+  let out = ""; const warn = [];
+  for (let i = 0; i < seg.length; i++) {
+    const s = seg[i];
+    if (!hasK(s)) { out += s; continue; }
+    const H = seg[i + 1];
+    if (H && /^[ぁ-ゖー]+$/.test(H)) {
+      let hit = -1;
+      // 붙은 읽기 길이를 1글자부터 늘려 가며, 사전 읽기와 맞는 길이를 찾음 (먼저 정확히, 다음에 탁음 차이 허용)
+      for (const loose of [false, true]) {
+        for (let k = 1; k <= H.length && hit < 0; k++) {
+          const F = H.slice(0, k), R = H.slice(k), a = rd(t, s + R), b = F + R;
+          if (loose ? noDaku(a) === noDaku(b) : a === b) hit = k;
+        }
+        if (hit >= 0) break;
+      }
+      if (hit >= 0) out += s + "(" + H.slice(0, hit) + ")" + H.slice(hit);
+      else { out += s + H; warn.push(s + H); }
+      i++; continue;
+    }
+    out += annotate(t, s); // 뒤에 히라가나가 없는 한자는 사전 읽기를 붙임
+  }
+  return { text: out, warn };
+}
+
 onmessage = async (e) => {
   const d = e.data;
   try {
     const t = await load(d.dic);
-    if (d.type === "tokenize") {
+    if (d.type === "namu") {
+      // 붙은 후리가나 떼기(stuck=true) 또는 사전으로 읽기 붙이기(stuck=false)
+      const lines = d.lines.map((l) => (!l ? { text: "", warn: [] } : /[（(]/.test(l) ? { text: l, warn: [] } : d.stuck ? detach(t, l) : { text: annotate(t, l), warn: [] }));
+      postMessage({ id: d.id, ok: true, lines });
+    } else if (d.type === "tokenize") {
       // 빈 줄은 건너뛰고, 각 단어의 [표기, 읽기(가타카나)]만 돌려줌
       const lines = d.lines.map((l) => (l ? t.tokenize(l).map((k) => [k.surface_form, k.reading || ""]) : []));
       postMessage({ id: d.id, ok: true, lines });

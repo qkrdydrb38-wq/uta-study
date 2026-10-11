@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>UTA STUDY 가사 정리기</title>
+<link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#1f3a5f"><link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#f6f1e7;--card:#fffdf8;--tx:#2a2a2a;--ac:#1f3a5f;--hl:#e1eaf4;--mut:#777;--bd:#e2dccd;--warn:#a33}
+:root[data-theme=dark]{--bg:#16181d;--card:#1f232a;--tx:#e8e6e1;--ac:#8fb4e8;--hl:#2a3547;--mut:#9a9a9a;--bd:#2f343d;--warn:#e88}
+html,body{margin:0}
+body{background:var(--bg);color:var(--tx);font-family:"Noto Sans KR","Hiragino Sans","Noto Sans JP",sans-serif;padding:12px 16px 40px}
+h1{color:var(--ac);font-size:22px;letter-spacing:2px;margin:6px 0 4px}
+h2{font-size:17px;margin:0 0 8px}
+button,select,input,textarea{font:inherit;color:var(--tx)}
+button{background:var(--card);border:1px solid var(--bd);border-radius:12px;min-height:44px;padding:0 14px;cursor:pointer}
+button.pri{background:var(--ac);color:var(--bg);border-color:var(--ac)}
+button:disabled{opacity:.5}
+.wrap{max-width:1400px;margin:auto}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.col{background:var(--card);border-radius:16px;padding:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
+.mut{color:var(--mut);font-size:14px}
+.in{width:100%;box-sizing:border-box;border:1px solid var(--bd);border-radius:10px;padding:8px;background:var(--bg)}
+textarea.in{font-family:"Hiragino Mincho ProN","Noto Serif JP","Yu Mincho",serif;line-height:1.7}
+label{display:flex;gap:6px;align-items:center;min-height:36px}
+#msg{min-height:22px;margin:6px 0;white-space:pre-wrap}
+.warn{color:var(--warn)}
+#warns div{padding:4px 0;border-bottom:1px solid var(--bd)}
+</style></head><body><div class="wrap">
+<div class="row" style="justify-content:space-between;margin:0"><h1>가사 정리기</h1><button onclick="location.href='./'">← 앱으로</button></div>
+<div class="mut">붙여 넣은 가사를 UTA STUDY 앱에 넣을 수 있는 형태(漢字(よみ))로 정리해요. 앱 안의 일본어 사전을 쓰고, Claude는 쓰지 않아요. 직접 쓴 가사나 이용할 권리가 있는 가사만 개인 공부용으로 넣어 주세요.</div>
+
+<div class="grid">
+<div class="col">
+ <h2>1. 붙여 넣기</h2>
+ <div class="row"><input id="ti" class="in" placeholder="노래 제목" style="flex:2;min-width:160px"><input id="ar" class="in" placeholder="가수 (선택)" style="flex:1;min-width:120px"></div>
+ <div class="row">형식
+  <select id="mode" style="min-height:44px"><option value="3">일본어 / 발음 / 번역 (3줄씩)</option><option value="2">일본어 / 번역 (2줄씩)</option><option value="1">일본어만</option></select></div>
+ <label><input type="checkbox" id="stuck" checked> 한자 뒤에 읽기가 붙어서 복사됨 (예: 漢字かんじ)</label>
+ <textarea id="src" class="in" rows="16" placeholder="여기에 붙여 넣으세요.&#10;예)&#10;明日あしたも君きみに会あいたい&#10;아시타모 키미니 아이타이&#10;내일도 너를 만나고 싶어"></textarea>
+ <div class="row"><button class="pri" id="go">🪄 정리하기</button><button id="clr">지우기</button></div>
+ <div id="msg" class="mut"></div>
+</div>
+<div class="col">
+ <h2>2. 확인하고 고치기</h2>
+ <div class="mut">일본어 가사 (앱 형식: 漢字(よみ) 또는 漢字(よみ|뜻))</div>
+ <textarea id="ly" class="in" rows="9"></textarea>
+ <div class="mut" style="margin-top:8px">한국어 번역 (가사와 같은 줄 순서)</div>
+ <textarea id="tr" class="in" rows="6"></textarea>
+ <div id="warns" class="mut"></div>
+ <h2 style="margin-top:12px">3. 앱으로 보내기</h2>
+ <div class="row"><button class="pri" id="sv">📲 앱에 노래로 저장</button><button id="dl">📄 노래 파일 받기</button></div>
+ <div id="msg2" class="mut"></div>
+</div>
+</div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+try{const d=JSON.parse(localStorage.getItem("uta")||"null");document.documentElement.dataset.theme=d&&d.set&&d.set.dark?"dark":"light"}catch(e){}
+
+// ===== 사전 일꾼(furi-worker.js)과 주고받기 =====
+let fw=null,fwId=0,fwP={};
+function furiWorker(){if(fw)return fw;fw=new Worker("furi-worker.js");
+ fw.onmessage=e=>{const p=fwP[e.data.id];if(!p)return;delete fwP[e.data.id];e.data.ok?p.res(e.data):p.rej(e.data.err)};
+ fw.onerror=e=>{if(e.preventDefault)e.preventDefault();const m=(e&&e.message)||"알 수 없는 오류";for(const k in fwP){fwP[k].rej({code:"crash",msg:m});delete fwP[k]}try{fw.terminate()}catch(x){}fw=null};
+ return fw}
+function fwCall(type,lines,extra){return new Promise((res,rej)=>{const id=++fwId;fwP[id]={res,rej};try{furiWorker().postMessage(Object.assign({id,type,lines:lines||[],dic:new URL("lib/dict/",location.href).href},extra||{}))}catch(x){delete fwP[id];rej({code:"crash",msg:String(x)})}})}
+const FURI_ERR={nolib:"lib/kuromoji.js 파일을 찾을 수 없어요. GitHub의 lib 폴더를 확인해 주세요.",
+ missing:"사전 파일을 찾을 수 없어요. GitHub의 lib/dict 폴더에 .dat.gz 파일이 모두 있는지 확인해 주세요.",
+ notgz:"사전 파일의 형식이 예상과 달라요. .dat.gz 파일을 풀지 않고 받은 그대로 올렸는지 확인해 주세요.",
+ crash:"사전을 여는 중 오류가 났어요. 앱의 노래 추가 화면에서 「🛠 사전 점검」을 눌러 결과를 알려 주세요.",
+ build:"사전을 여는 중 오류가 났어요. 앱의 노래 추가 화면에서 「🛠 사전 점검」을 눌러 결과를 알려 주세요."};
+setTimeout(()=>fwCall("load").catch(()=>{}),300); // 화면을 멈추지 않고 사전을 미리 준비
+
+// ===== 붙여 넣은 글을 「일본어 줄 + 번역 줄」 묶음으로 나누기 =====
+const hasKana=l=>/[぀-ヿ]/.test(l),hasKanji=l=>/[一-龯]/.test(l),hasHangul=l=>/[가-힣]/.test(l);
+const isJP=l=>hasKana(l)||(hasKanji(l)&&!hasHangul(l));
+function group(text,mode){const out=[];let cur=null;
+ for(const raw of text.split("\n")){const l=raw.trim();if(!l)continue;
+  if(isJP(l)){cur={jp:l,ko:[]};out.push(cur)}else if(cur)cur.ko.push(l)}
+ return out.map(g=>{let tr="",note="";
+  if(mode==="3"){if(g.ko.length>=2)tr=g.ko[g.ko.length-1];else if(g.ko.length===1){tr=g.ko[0];note="한국어 줄이 하나뿐이라 번역으로 넣었어요. 발음 줄이면 지워 주세요"}}
+  else if(mode==="2")tr=g.ko.join(" ");
+  return{jp:g.jp,tr,note}})}
+
+// ===== 정리하기 =====
+$("#go").onclick=async()=>{const msg=$("#msg"),mode=$("#mode").value,gs=group($("#src").value,mode);
+ if(!gs.length){msg.className="warn";msg.textContent="일본어 줄을 찾지 못했어요. 가사를 붙여 넣었는지 확인해 주세요.";return}
+ msg.className="mut";$("#go").disabled=true;
+ const t0=Date.now(),iv=setInterval(()=>{msg.textContent="정리하는 중이에요... "+Math.round((Date.now()-t0)/1000)+"초 (처음 한 번은 사전을 준비하느라 오래 걸릴 수 있어요. 그동안 화면은 멈추지 않아요)"},1000);
+ msg.textContent="정리하는 중이에요...";
+ try{const r=await Promise.race([fwCall("namu",gs.map(g=>g.jp),{stuck:$("#stuck").checked}),new Promise((_,rj)=>setTimeout(()=>rj({code:"timeout"}),180000))]);
+  clearInterval(iv);
+  $("#ly").value=r.lines.map(x=>x.text).join("\n");$("#tr").value=gs.map(g=>g.tr).join("\n");
+  const w=[];r.lines.forEach((x,i)=>{if(x.warn.length)w.push(`<div><b>${i+1}번째 줄</b>: 「${esc(x.warn.join("」, 「"))}」 부분은 읽기를 떼어 내지 못했어요. 직접 漢字(よみ) 형태로 고쳐 주세요.</div>`);if(gs[i].note)w.push(`<div><b>${i+1}번째 줄</b>: ${esc(gs[i].note)}.</div>`)});
+  $("#warns").innerHTML=w.length?'<div class="warn" style="margin-top:8px">확인이 필요한 곳 '+w.length+'개</div>'+w.join(""):'<div style="margin-top:8px">자동으로 확인하지 못한 곳은 없어요. 그래도 읽기가 맞는지 한 번 훑어봐 주세요.</div>';
+  msg.textContent=`${gs.length}줄을 정리했어요 (${Math.round((Date.now()-t0)/1000)}초). 오른쪽에서 확인하고 고친 뒤 앱으로 보내세요.`}
+ catch(e){clearInterval(iv);msg.className="warn";const c=e&&e.code;
+  msg.textContent=c==="timeout"?"3분이 지나도 사전이 준비되지 않아요. 앱의 노래 추가 화면에서 「🛠 사전 점검」을 눌러 결과를 알려 주세요.":(FURI_ERR[c]||FURI_ERR.build)+(e&&e.msg?" ("+e.msg+")":"")}
+ finally{$("#go").disabled=false}};
+$("#clr").onclick=()=>{$("#src").value="";$("#ly").value="";$("#tr").value="";$("#warns").innerHTML="";$("#msg").textContent=""};
+
+// ===== 앱 형식으로 바꾸기 (앱의 노래 추가와 같은 방식) =====
+function parseLy(txt,tr){const T0=tr.split("\n").map(s=>s.trim()),LN=txt.split("\n").map(s=>s.trim()).filter(Boolean),T=T0.length===LN.length?T0:T0.filter(Boolean),re=/([一-龯々〆ヶ]+)[（(]([^）)|]+)(?:\|([^）)]+))?[）)]/g;
+ return LN.map((ln,n)=>{const w=[];let p=0,m;re.lastIndex=0;while((m=re.exec(ln))){if(m.index>p)w.push([ln.slice(p,m.index),"","",""]);w.push([m[1],m[2],m[3]||"",""]);p=re.lastIndex}if(p<ln.length)w.push([ln.slice(p),"","",""]);return{k:T[n]||"",w}})}
+function makeSong(){const m2=$("#msg2"),title=$("#ti").value.trim(),lines=parseLy($("#ly").value,$("#tr").value);
+ if(!title){m2.className="warn";m2.textContent="노래 제목을 입력해 주세요.";$("#ti").focus();return null}
+ if(!lines.length){m2.className="warn";m2.textContent="먼저 「🪄 정리하기」를 눌러 가사를 만들어 주세요.";return null}
+ m2.className="mut";return{id:"s"+Date.now(),title,artist:$("#ar").value.trim(),lines}}
+$("#sv").onclick=()=>{const s=makeSong();if(!s)return;const m2=$("#msg2");
+ try{let d=null;try{d=JSON.parse(localStorage.getItem("uta")||"null")}catch(e){}
+  if(!d||!Array.isArray(d.vocab))d={vocab:[],songs:[],ts:{},tsAll:{},cur:"sample",log:{}};
+  d.songs=Array.isArray(d.songs)?d.songs:[];d.songs.push(s);d.cur=s.id;
+  localStorage.setItem("uta",JSON.stringify(d));
+  m2.textContent=`「${s.title}」을(를) 앱에 저장했어요. 「← 앱으로」를 누르면 「이어서 학습」에 이 노래가 나와요.`}
+ catch(e){m2.className="warn";m2.textContent="앱에 저장하지 못했어요. 저장 공간이 부족할 수 있어요. 「📄 노래 파일 받기」로 받아서 앱 설정의 「노래 가져오기」를 써 주세요."}};
+$("#dl").onclick=()=>{const s=makeSong();if(!s)return;
+ const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([JSON.stringify({type:"uta-songs",v:1,songs:[s],ts:{},kj:{}})],{type:"application/json"}));a.download="uta-songs.json";document.body.appendChild(a);a.click();a.remove();
+ $("#msg2").textContent="파일을 받았어요. 앱의 설정 → 「노래 가져오기」에서 이 파일을 고르면 돼요."};
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script></body></html>
