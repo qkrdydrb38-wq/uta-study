@@ -251,7 +251,7 @@ function rLog(){st.lr=st.lr||{};const rows=[];
 async function saveFile(n,d){const m=$("#msg");try{const dl=typeof claude!=="undefined"?await claude.use("downloads"):null;if(dl){await dl.save({filename:n,data:d})}else{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([d]));a.download=n;document.body.appendChild(a);a.click();a.remove()}m.textContent="저장했어요. 다운로드 폴더를 확인해 주세요."}catch(e){m.textContent=e&&e.code==="declined"?"저장을 취소했어요.":"파일을 저장하지 못했어요."}}
 // ===== 설정 / 백업 =====
 function rSet(){
- $("#m").innerHTML=`<div class="col" style="max-width:700px;margin:auto"><h3>설정 <span class="mut">(앱 버전 v11)</span></h3>
+ $("#m").innerHTML=`<div class="col" style="max-width:700px;margin:auto"><h3>설정 <span class="mut">(앱 버전 v12)</span></h3>
  <div class="row"><button id="dk">${st.set.dark?"☀️ 밝은 테마":"🌙 어두운 테마"}</button></div>
  <h3>백업</h3><div class="mut">브라우저 데이터를 지우면 저장한 단어가 사라질 수 있어요. 가끔 백업 파일을 받아 두세요.</div>
  <div class="row"><button id="ex" class="pri">백업 파일 받기</button><button id="cv">단어장 CSV 받기</button><input type="file" id="im" accept=".json"></div><div id="msg" class="mut"></div>

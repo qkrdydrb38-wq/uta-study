@@ -68,7 +68,13 @@ function detach(t, line) {
         if (hit >= 0) break;
       }
       if (hit >= 0) out += s + "(" + H.slice(0, hit) + ")" + H.slice(hit);
-      else { out += s + H; warn.push(s + H); }
+      else {
+        // 붙은 읽기를 못 찾은 경우: 원래부터 읽기가 안 붙어 온 단어(예: 彼が)인지 확인하고, 그렇다면 사전으로 읽기를 붙임
+        const ann = annotate(t, s + H), m = ann.match(/^[^(]*\(([^)|]+)\)/), rk = m ? m[1] : "";
+        const looksStuck = rk && noDaku(H).startsWith(noDaku(rk).slice(0, Math.min(2, rk.length)));
+        if (rk && !looksStuck) out += ann;
+        else { out += s + H; warn.push(s + H); }
+      }
       i++; continue;
     }
     out += annotate(t, s); // 뒤에 히라가나가 없는 한자는 사전 읽기를 붙임
