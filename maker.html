@@ -30,7 +30,7 @@ label{display:flex;gap:6px;align-items:center;min-height:36px}
 #warns .it input{min-height:40px;border:1px solid var(--bd);border-radius:10px;padding:0 8px;background:var(--bg);width:9em}
 #warns .seg{font-family:"Hiragino Mincho ProN","Noto Serif JP",serif;font-size:18px;color:var(--warn)}
 </style></head><body><div class="wrap">
-<div class="row" style="justify-content:space-between;margin:0"><h1>가사 정리기</h1><span class="mut">v18</span> <button onclick="location.href='./'">← 앱으로</button></div>
+<div class="row" style="justify-content:space-between;margin:0"><h1>가사 정리기</h1><span class="mut">v19</span> <button onclick="location.href='./'">← 앱으로</button></div>
 <div class="mut">붙여 넣은 가사를 UTA STUDY 앱에 넣을 수 있는 형태(漢字(よみ))로 정리해요. 앱 안의 일본어 사전을 쓰고, Claude는 쓰지 않아요. 직접 쓴 가사나 이용할 권리가 있는 가사만 개인 공부용으로 넣어 주세요.</div>
 
 <div class="grid">
@@ -103,6 +103,31 @@ function splitStory(text){
  if(cur.trim())out.push(cur.trim());
  return out.filter(x=>/[぀-ヿ一-龯]/.test(x))}
 $("#mode").onchange=()=>{const s=$("#mode").value==="s";$("#stuck").closest("label").style.display=s?"none":""};
+// ===== 히라가나 → 한글 발음 (예: あした → 아시타). 발음 줄이 없을 때 자동으로 만들어 보여 줌 =====
+const K2H=(()=>{
+ // [초성 번호, 중성 번호]  초성: ㄱ0 ㄲ1 ㄴ2 ㄷ3 ㄸ4 ㄹ5 ㅁ6 ㅂ7 ㅃ8 ㅅ9 ㅆ10 ㅇ11 ㅈ12 ㅉ13 ㅊ14 ㅋ15 ㅌ16 ㅍ17 ㅎ18
+ // 중성: ㅏ0 ㅑ2 ㅔ5 ㅗ8 ㅘ9 ㅛ12 ㅜ13 ㅠ17 ㅡ18 ㅣ20
+ const T={};const row=(ks,ini,meds)=>[...ks].forEach((k,i)=>{if(k!=="_")T[k]=[ini,meds[i]]});
+ const A=[0,20,13,5,8];
+ row("あいうえお",11,A);row("かきくけこ",15,A);row("がぎぐげご",0,A);row("さしすせそ",9,[0,20,18,5,8]);row("ざじずぜぞ",12,[0,20,18,5,8]);
+ row("たちつてと",16,A);row("だぢづでど",3,A);row("なにぬねの",2,A);row("はひふへほ",18,A);row("ばびぶべぼ",7,A);row("ぱぴぷぺぽ",17,A);
+ row("まみむめも",6,A);row("やゆよ",11,[2,17,12]);row("らりるれろ",5,A);row("わを",11,[9,8]);
+ T["ち"]=[14,20];T["つ"]=[14,18];T["ぢ"]=[12,20];T["づ"]=[12,18];
+ const SMALL={"ゃ":2,"ゅ":17,"ょ":12,"ぁ":0,"ぃ":20,"ぅ":13,"ぇ":5,"ぉ":8};
+ const mk=s=>String.fromCharCode(0xAC00+(s.i*21+s.m)*28+s.f);
+ function conv(text){const h=text.replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60));let out=[];
+  for(const ch of h){const last=out.length&&typeof out[out.length-1]==="object"?out[out.length-1]:null;
+   if(T[ch]){out.push({i:T[ch][0],m:T[ch][1],f:0});continue}
+   if(SMALL[ch]!==undefined&&last){last.m=SMALL[ch];continue}
+   if(ch==="ん"){if(last&&!last.f)last.f=4;else out.push("응");continue}
+   if(ch==="っ"){if(last&&!last.f)last.f=19;continue}
+   if(ch==="ー"||ch==="〜")continue;
+   out.push(ch==="、"?", ":ch==="。"?". ":ch===" "?" ":ch)}
+  return out.map(x=>typeof x==="object"?mk(x):x).join("").replace(/[「」『』]/g,"").replace(/\s+/g," ").trim()}
+ // 가사 한 줄(단어 목록)에서 발음 만들기: 읽기가 있으면 읽기로, 따로 떨어진 조사 は・へ 는 와・에로
+ function line(l){if(!l||!l.w)return"";const parts=l.w.map(w=>w[1]?w[1]:w[0]==="は"?"わ":w[0]==="へ"?"え":w[0]);
+  const s=conv(parts.join(""));return /[가-힣]/.test(s)?s:""}
+ return{conv,line}})();
 // ===== 정리하기 =====
 $("#go").onclick=async()=>{const msg=$("#msg"),mode=$("#mode").value,gs=mode==="s"?splitStory($("#src").value).map(t=>({jp:t,tr:"",pr:"",note:""})):group($("#src").value,mode);
  if(!gs.length){msg.className="warn";msg.textContent="가사 줄(일본어·영어)을 찾지 못했어요. 가사를 붙여 넣었는지 확인해 주세요.";return}
@@ -111,7 +136,7 @@ $("#go").onclick=async()=>{const msg=$("#msg"),mode=$("#mode").value,gs=mode==="
  msg.textContent="정리하는 중이에요...";
  try{const r=await Promise.race([fwCall("namu",gs.map(g=>g.jp),{stuck:mode==="s"?false:$("#stuck").checked}),new Promise((_,rj)=>setTimeout(()=>rj({code:"timeout"}),180000))]);
   clearInterval(iv);
-  $("#ly").value=r.lines.map(x=>x.text).join("\n");$("#tr").value=gs.map(g=>g.tr).join("\n");$("#pr").value=gs.map(g=>g.pr||"").join("\n");
+  $("#ly").value=r.lines.map(x=>x.text).join("\n");$("#tr").value=gs.map(g=>g.tr).join("\n");$("#pr").value=gs.map((g,i)=>g.pr||K2H.line(parseLy(r.lines[i].text,"")[0])).join("\n");
   WARN=[];r.lines.forEach((x,i)=>{x.warn.forEach(o=>{const seg=typeof o==="string"?o:o.seg,k=(seg.match(/^[一-龯々〆]+/)||[""])[0];WARN.push({t:"ly",line:i,seg,k,h:seg.slice(k.length),sug:(o&&o.sug)||"",pr:gs[i].pr||""})});if(gs[i].note)WARN.push({t:"tr",line:i,note:gs[i].note})});
   drawWarns();
   msg.textContent=`${gs.length}줄을 정리했어요 (${Math.round((Date.now()-t0)/1000)}초). 오른쪽에서 확인하고 고친 뒤 앱으로 보내세요.`}

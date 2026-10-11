@@ -153,9 +153,34 @@ async function askPen(t){penQA=[];penReady=false;const sp=typeof claude!=="undef
  showPen(t,"Claude가 해석하는 중이에요...");
  try{const r=await sp(penP='일본어 학습자(한국어 사용자)를 위해 다음 일본어 문장을 설명해 주세요.\n문장: '+t+'\n형식(항목마다 한~두 줄, 짧게): 번역(자연스러운 한국어) / 직역 / 문법 포인트 / 주요 단어(읽기와 뜻) / 뉴앙스 한 줄(모르면 추측하지 말 것).');penA0=r.text;penHist=[{role:"user",content:penP},{role:"assistant",content:r.text}];penReady=true;showPen(t,r.text)}
  catch(e){showPen(t,e&&e.code==="not_granted"?"허용하지 않아서 실행하지 않았어요.":e&&e.code==="rate_limited"?"잠시 후에 다시 시도해 주세요.":"답을 받지 못했어요. 다시 선택해 주세요.")}}
+// ===== 히라가나 → 한글 발음 (예: あした → 아시타). 발음 줄이 없을 때 자동으로 만들어 보여 줌 =====
+const K2H=(()=>{
+ // [초성 번호, 중성 번호]  초성: ㄱ0 ㄲ1 ㄴ2 ㄷ3 ㄸ4 ㄹ5 ㅁ6 ㅂ7 ㅃ8 ㅅ9 ㅆ10 ㅇ11 ㅈ12 ㅉ13 ㅊ14 ㅋ15 ㅌ16 ㅍ17 ㅎ18
+ // 중성: ㅏ0 ㅑ2 ㅔ5 ㅗ8 ㅘ9 ㅛ12 ㅜ13 ㅠ17 ㅡ18 ㅣ20
+ const T={};const row=(ks,ini,meds)=>[...ks].forEach((k,i)=>{if(k!=="_")T[k]=[ini,meds[i]]});
+ const A=[0,20,13,5,8];
+ row("あいうえお",11,A);row("かきくけこ",15,A);row("がぎぐげご",0,A);row("さしすせそ",9,[0,20,18,5,8]);row("ざじずぜぞ",12,[0,20,18,5,8]);
+ row("たちつてと",16,A);row("だぢづでど",3,A);row("なにぬねの",2,A);row("はひふへほ",18,A);row("ばびぶべぼ",7,A);row("ぱぴぷぺぽ",17,A);
+ row("まみむめも",6,A);row("やゆよ",11,[2,17,12]);row("らりるれろ",5,A);row("わを",11,[9,8]);
+ T["ち"]=[14,20];T["つ"]=[14,18];T["ぢ"]=[12,20];T["づ"]=[12,18];
+ const SMALL={"ゃ":2,"ゅ":17,"ょ":12,"ぁ":0,"ぃ":20,"ぅ":13,"ぇ":5,"ぉ":8};
+ const mk=s=>String.fromCharCode(0xAC00+(s.i*21+s.m)*28+s.f);
+ function conv(text){const h=text.replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60));let out=[];
+  for(const ch of h){const last=out.length&&typeof out[out.length-1]==="object"?out[out.length-1]:null;
+   if(T[ch]){out.push({i:T[ch][0],m:T[ch][1],f:0});continue}
+   if(SMALL[ch]!==undefined&&last){last.m=SMALL[ch];continue}
+   if(ch==="ん"){if(last&&!last.f)last.f=4;else out.push("응");continue}
+   if(ch==="っ"){if(last&&!last.f)last.f=19;continue}
+   if(ch==="ー"||ch==="〜")continue;
+   out.push(ch==="、"?", ":ch==="。"?". ":ch===" "?" ":ch)}
+  return out.map(x=>typeof x==="object"?mk(x):x).join("").replace(/[「」『』]/g,"").replace(/\s+/g," ").trim()}
+ // 가사 한 줄(단어 목록)에서 발음 만들기: 읽기가 있으면 읽기로, 따로 떨어진 조사 は・へ 는 와・에로
+ function line(l){if(!l||!l.w)return"";const parts=l.w.map(w=>w[1]?w[1]:w[0]==="は"?"わ":w[0]==="へ"?"え":w[0]);
+  const s=conv(parts.join(""));return /[가-힣]/.test(s)?s:""}
+ return{conv,line}})();
 function drawLy(){
  $("#ly").style.fontSize=st.set.size+"px";
- $("#ly").innerHTML=SONG.lines.map((l,i)=>`<div class="lyr ${i===sel?"cur":""}" data-i="${i}"><div class="jp ${st.set.furi?"":"nofuri"}">${l.w.map((w,j)=>w[1]?`<ruby class="tk ${st.vocab.some(v=>v.k===key(w))?"sv":""}" data-i="${i}" data-j="${j}">${w[0]}<rt>${w[1]}</rt></ruby>`:esc(w[0])).join("")}</div>${st.set.pr!==false&&l.p?`<div class="tr" style="color:var(--ac)">${esc(l.p)}</div>`:""}${st.set.tr?`<div class="tr">${esc(l.k)}</div>`:""}</div>`).join("");
+ $("#ly").innerHTML=SONG.lines.map((l,i)=>`<div class="lyr ${i===sel?"cur":""}" data-i="${i}"><div class="jp ${st.set.furi?"":"nofuri"}">${l.w.map((w,j)=>w[1]?`<ruby class="tk ${st.vocab.some(v=>v.k===key(w))?"sv":""}" data-i="${i}" data-j="${j}">${w[0]}<rt>${w[1]}</rt></ruby>`:esc(w[0])).join("")}</div>${st.set.pr!==false&&(l.p||K2H.line(l))?`<div class="tr" style="color:var(--ac)">${esc(l.p||K2H.line(l))}</div>`:""}${st.set.tr&&l.k?`<div class="tr">${esc(l.k)}</div>`:""}</div>`).join("");
  $("#ly").onclick=e=>{if(String(getSelection()).trim())return;const tk=e.target.closest(".tk"),ly=e.target.closest(".lyr");if(!ly)return;sel=+ly.dataset.i;if(tk)selW=[sel,+tk.dataset.j];else if(st.ts[sel]!=null&&audio.src)audio.currentTime=st.ts[sel];mark();document.querySelectorAll(".tk").forEach(x=>x.classList.toggle("sel",!!selW&&+x.dataset.i===selW[0]&&+x.dataset.j===selW[1]));drawPanel()}}
 // ===== 한자 음독/훈독 내장 자료 (한자|음독|훈독) =====
 const KJ2=`明|メイ ミョウ|あか(るい) あき(らか) あ(ける)
@@ -240,7 +265,7 @@ function pickLine(){const pool=linePool();if(!pool.length)return null;let c,n=0;
 function rLine(){const ok=lineCur&&findSong(lineCur.sid)&&findSong(lineCur.sid).lines[lineCur.i];if(!ok)lineCur=pickLine();
  if(!lineCur){$("#m").innerHTML='<div class="col" style="max-width:800px;margin:auto"><h3>줄 읽기</h3><p class="mut">연습할 일본어 줄이 없어요. 노래를 추가해 주세요.</p></div>';return}
  const so=findSong(lineCur.sid),l=so.lines[lineCur.i];
- $("#m").innerHTML=`<div class="col" style="max-width:800px;margin:auto;text-align:center"><div class="mut">🔀 모든 노래에서 무작위 · ${esc(so.title)} ${lineCur.i+1}번째 줄</div><div class="jp ${showF?"":"nofuri"}" style="font-size:40px;margin:24px 0">${l.w.map(w=>w[1]?`<ruby>${w[0]}<rt>${w[1]}</rt></ruby>`:esc(w[0])).join("")}</div>${showP?`<div class="tr" style="font-size:20px;margin-bottom:8px;color:var(--ac)">${esc(l.p||"(발음이 없어요)")}</div>`:""}${showT?`<div class="tr" style="font-size:20px;margin-bottom:12px">${esc(l.k||"(번역이 없어요)")}</div>`:""}
+ $("#m").innerHTML=`<div class="col" style="max-width:800px;margin:auto;text-align:center"><div class="mut">🔀 모든 노래에서 무작위 · ${esc(so.title)} ${lineCur.i+1}번째 줄</div><div class="jp ${showF?"":"nofuri"}" style="font-size:40px;margin:24px 0">${l.w.map(w=>w[1]?`<ruby>${w[0]}<rt>${w[1]}</rt></ruby>`:esc(w[0])).join("")}</div>${showP?`<div class="tr" style="font-size:20px;margin-bottom:8px;color:var(--ac)">${esc(l.p||K2H.line(l)||"(발음이 없어요)")}</div>`:""}${showT?`<div class="tr" style="font-size:20px;margin-bottom:12px">${esc(l.k||"(번역이 없어요)")}</div>`:""}
  <div class="mut">소리 내어 읽어 본 뒤 후리가나를 공개해 확인해 보세요.</div>
  <div class="row" style="justify-content:center"><button id="lf" class="pri">후리가나 ${showF?"숨기기":"공개"}</button><button id="lpr">발음 ${showP?"숨기기":"공개"}</button><button id="lt">번역 ${showT?"숨기기":"공개"}</button><button id="lp2">▶ 이 줄 재생</button></div>
  <div class="row" style="justify-content:center"><button id="lb" ${lineHist.length?"":"disabled"}>← 앞에 본 줄</button><button id="ln" class="pri">🔀 다음 줄</button></div><div id="lm" class="mut"></div></div>`;
@@ -265,7 +290,7 @@ function rLog(){st.lr=st.lr||{};const rows=[];
 async function saveFile(n,d){const m=$("#msg");try{const dl=typeof claude!=="undefined"?await claude.use("downloads"):null;if(dl){await dl.save({filename:n,data:d})}else{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([d]));a.download=n;document.body.appendChild(a);a.click();a.remove()}m.textContent="저장했어요. 다운로드 폴더를 확인해 주세요."}catch(e){m.textContent=e&&e.code==="declined"?"저장을 취소했어요.":"파일을 저장하지 못했어요."}}
 // ===== 설정 / 백업 =====
 function rSet(){
- $("#m").innerHTML=`<div class="col" style="max-width:700px;margin:auto"><h3>설정 <span class="mut">(앱 버전 v18)</span></h3>
+ $("#m").innerHTML=`<div class="col" style="max-width:700px;margin:auto"><h3>설정 <span class="mut">(앱 버전 v19)</span></h3>
  <div class="row"><button id="dk">${st.set.dark?"☀️ 밝은 테마":"🌙 어두운 테마"}</button></div>
  <h3>백업</h3><div class="mut">브라우저 데이터를 지우면 저장한 단어가 사라질 수 있어요. 가끔 백업 파일을 받아 두세요.</div>
  <div class="row"><button id="ex" class="pri">백업 파일 받기</button><button id="cv">단어장 CSV 받기</button><input type="file" id="im" accept=".json"></div><div id="msg" class="mut"></div>
