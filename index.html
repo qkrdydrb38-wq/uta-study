@@ -251,7 +251,7 @@ function rLog(){st.lr=st.lr||{};const rows=[];
 async function saveFile(n,d){const m=$("#msg");try{const dl=typeof claude!=="undefined"?await claude.use("downloads"):null;if(dl){await dl.save({filename:n,data:d})}else{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([d]));a.download=n;document.body.appendChild(a);a.click();a.remove()}m.textContent="저장했어요. 다운로드 폴더를 확인해 주세요."}catch(e){m.textContent=e&&e.code==="declined"?"저장을 취소했어요.":"파일을 저장하지 못했어요."}}
 // ===== 설정 / 백업 =====
 function rSet(){
- $("#m").innerHTML=`<div class="col" style="max-width:700px;margin:auto"><h3>설정</h3>
+ $("#m").innerHTML=`<div class="col" style="max-width:700px;margin:auto"><h3>설정 <span class="mut">(앱 버전 v10)</span></h3>
  <div class="row"><button id="dk">${st.set.dark?"☀️ 밝은 테마":"🌙 어두운 테마"}</button></div>
  <h3>백업</h3><div class="mut">브라우저 데이터를 지우면 저장한 단어가 사라질 수 있어요. 가끔 백업 파일을 받아 두세요.</div>
  <div class="row"><button id="ex" class="pri">백업 파일 받기</button><button id="cv">단어장 CSV 받기</button><input type="file" id="im" accept=".json"></div><div id="msg" class="mut"></div>
@@ -284,6 +284,19 @@ const toLy=s=>s.lines.map(l=>l.w.map(w=>w[1]?w[0]+"("+w[1]+(w[2]?"|"+w[2]:"")+")
 const toImg=f=>new Promise((res,rej)=>{const im=new Image(),u=URL.createObjectURL(f);im.onload=()=>{const k=Math.min(1,320/Math.max(im.width,im.height)),c=document.createElement("canvas");c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext("2d").drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);res(c.toDataURL("image/jpeg",.8))};im.onerror=rej;im.src=u});
 function parseLy(txt,tr){const T0=tr.split("\n").map(s=>s.trim()),LN=txt.split("\n").map(s=>s.trim()).filter(Boolean),T=T0.length===LN.length?T0:T0.filter(Boolean),re=/([一-龯々〆ヶ]+)[（(]([^）)|]+)(?:\|([^）)]+))?[）)]/g;
  return txt.split("\n").map(s=>s.trim()).filter(Boolean).map((ln,n)=>{const w=[];let p=0,m;re.lastIndex=0;while((m=re.exec(ln))){if(m.index>p)w.push([ln.slice(p,m.index),"","",""]);w.push([m[1],m[2],m[3]||"",""]);p=re.lastIndex}if(p<ln.length)w.push([ln.slice(p),"","",""]);return{k:T[n]||"",w}})}
+// ===== 나무위키 형식 나누기: 가사 줄(일본어·영어)을 찾고, 그 아래 한국어 줄(발음·번역)을 묶음 =====
+const hasKana=l=>/[\u3040-\u30ff]/.test(l),hasKanji=l=>/[\u4e00-\u9faf]/.test(l),hasHangul=l=>/[\uac00-\ud7a3]/.test(l),hasLatin=l=>/[A-Za-z]/.test(l);
+const isLyric=l=>hasKana(l)||hasKanji(l)&&!hasHangul(l)||hasLatin(l)&&!hasHangul(l);
+function group(text,mode){const out=[];let cur=null;
+ for(const raw of text.split("\n")){const l=raw.trim();if(!l)continue;
+  if(isLyric(l)){const en=!hasKana(l)&&!hasKanji(l);
+   if(en&&cur&&cur.en&&!cur.ko.length&&cur.jp.replace(/\s+/g," ").toLowerCase()===l.replace(/\s+/g," ").toLowerCase()){cur.dup=true;continue} // 영어 줄이 발음 줄로 한 번 더 나온 경우 (남은 한국어 줄은 번역)
+   cur={jp:l,ko:[],en};out.push(cur)}
+  else if(cur)cur.ko.push(l)}
+ return out.map(g=>{let tr="",note="";
+  if(mode==="3"){if(g.ko.length>=2)tr=g.ko[g.ko.length-1];else if(g.ko.length===1){tr=g.ko[0];if(!g.dup)note=(g.en?"영어 줄":"이 줄")+" 아래 한국어 줄이 하나뿐이라 번역으로 넣었어요. 발음 줄이면 지워 주세요"}}
+  else if(mode==="2")tr=g.ko.join(" ");
+  return{jp:g.jp,tr,note,en:g.en}})}
 // ===== 후리가나 자동 붙이기: 사전은 furi-worker.js(일꾼)가 화면 뒤에서 불러와요. 그래서 화면이 멈추지 않아요. =====
 const DICT_FILES=["base","check","tid","tid_pos","tid_map","cc","unk","unk_pos","unk_map","unk_char","unk_compat","unk_invoke"].map(x=>x+".dat.gz");
 let fw=null,fwId=0,fwP={};
@@ -311,9 +324,8 @@ function rAdd(eid){const es=eid?st.songs.find(s=>s.id===eid):null,ta="width:100%
  <p>일본어 가사 (한 줄에 한 문장). 한자 뒤에 괄호로 읽기를, 필요하면 | 뒤에 뜻을 적어요.<br><span class="mut">예: 明日(あした|내일)も君(きみ|너)に会(あ|만나다)いたい</span><br><textarea id="nl" rows="7" style="${ta}">${es?esc(toLy(es)):""}</textarea></p>
  <p>한국어 번역 (선택, 가사와 같은 줄 순서로 한 줄씩)<br><textarea id="nr" rows="5" style="${ta}">${es?esc(es.lines.map(l=>l.k).join("\n")):""}</textarea></p>
  <div class="mut">직접 쓰거나 이용할 권리가 있는 가사만 넣어 주세요. 음악 파일은 학습 화면에서 선택해요.</div><div id="em" style="color:#a33;margin:6px 0"></div>
- <label class="mut"><input type="checkbox" id="nm"> 나무위키 형식 (일본어 / 발음 / 번역이 3줄씩)</label><div class="row"><button id="mk" onclick="location.href='maker.html'">🪄 가사 정리기</button><button id="af" class="pri">🔤 후리가나 자동 붙이기</button><button id="ad">🛠 사전 점검</button><button id="ai">✨ Claude로 후리가나·뜻·번역 만들기</button></div><div class="mut apphint">🔤 후리가나 자동 붙이기: 일본어 가사만 붙여 넣고 누르면, 앱 안의 사전으로 한자 읽기를 붙여요. 틀릴 수 있으니 확인하고 고쳐 주세요. 뜻과 번역까지 Claude로 만들려면 claude.ai의 UTA STUDY에서 만든 뒤 설정 → 「노래 보내기」/「노래 가져오기」로 옮겨 오세요.</div><div class="mut" id="aih">위 일본어 가사 칸에 가사만 붙여 넣고 누르면, Claude가 읽기·뜻·번역을 채워 줘요. 틀릴 수 있으니 확인 후 저장하세요.</div><div class="row"><button class="pri" id="ns">저장</button><button id="nc">취소</button></div></div>`;
+ <label class="mut"><input type="checkbox" id="nm"> 나무위키 형식 (가사 줄 / 발음 / 번역, 영어 줄이 섞여도 돼요)</label><div class="row"><button id="mk" onclick="location.href='maker.html'">🪄 가사 정리기</button><button id="af" class="pri">🔤 후리가나 자동 붙이기</button><button id="ad">🛠 사전 점검</button><button id="ai">✨ Claude로 후리가나·뜻·번역 만들기</button></div><div class="mut apphint">🔤 후리가나 자동 붙이기: 일본어 가사만 붙여 넣고 누르면, 앱 안의 사전으로 한자 읽기를 붙여요. 틀릴 수 있으니 확인하고 고쳐 주세요. 뜻과 번역까지 Claude로 만들려면 claude.ai의 UTA STUDY에서 만든 뒤 설정 → 「노래 보내기」/「노래 가져오기」로 옮겨 오세요.</div><div class="mut" id="aih">위 일본어 가사 칸에 가사만 붙여 넣고 누르면, Claude가 읽기·뜻·번역을 채워 줘요. 틀릴 수 있으니 확인 후 저장하세요.</div><div class="row"><button class="pri" id="ns">저장</button><button id="nc">취소</button></div></div>`;
  $("#nc").onclick=()=>{view="home";render()};
- setTimeout(()=>fwCall("load").catch(()=>{}),300);
  $("#ad").onclick=async()=>{const em=$("#em");em.style.color="var(--mut)";em.style.whiteSpace="pre-wrap";em.textContent="사전 파일을 하나씩 확인하는 중이에요...";
   let out="",T0=performance.now();
   for(const n of DICT_FILES){const t=performance.now();try{const r=await fetch("lib/dict/"+n,{cache:"no-store"});if(!r.ok){out+=n+": 열리지 않음 ("+r.status+")\n"}else{const b=await r.arrayBuffer(),u=new Uint8Array(b);out+=n+": "+(b.byteLength/1e6).toFixed(2)+"MB, "+((performance.now()-t)/1000).toFixed(1)+"초"+(u.length>2&&u[0]===0x1f&&u[1]===0x8b?"":" ⚠ 형식 이상")+"\n"}}catch(e){out+=n+": 오류\n"}
@@ -336,15 +348,15 @@ function rAdd(eid){const es=eid?st.songs.find(s=>s.id===eid):null,ta="width:100%
   const sp=typeof claude!=="undefined"?await claude.use("sample"):null;
   if(!sp){em.style.color="#a33";em.textContent="이 화면에서는 Claude 연동을 쓸 수 없어요.";return}
   em.style.color="var(--mut)";em.textContent="Claude가 작업 중이에요. 잠시만 기다려 주세요...";
-  try{const nm=$("#nm").checked;if(nm&&src.length%3)throw 1;
-   const NM='다음은 3줄이 한 묶음인 일본어 가사입니다. 각 묶음: 1줄째=일본어 원문(복사하면서 한자 바로 뒤에 후리가나가 그대로 붙어 있을 수 있음. 예: "漢字かんじ"처럼 한자 뒤에 읽기가 이어 붙은 형태), 2줄째=한국어 발음, 3줄째=한국어 번역.\n규칙: 1) 1줄째에서 붙어 있는 후리가나를 분리해 한자 단어 바로 뒤에 (읽기|한국어 뜻) 형식으로 바꿀 것. 예: 明日(あした|내일). 읽기는 입력에 적힌 후리가나를 그대로 쓰고 새로 추측하지 말 것. 원문 글자(한자와 히라가나)는 바꾸지 말 것. 2) 뜻은 짧은 한국어 단어로 직접 채울 것(뜻 안에 괄호와 | 금지). 3) 번역은 3줄째를 그대로 쓰고 다듬지 말 것. 4) 2줄째 발음은 쓰지 말 것. 5) 묶음 수와 같은 수의 줄을 JSON으로만 답할 것: {"lines":[{"ruby":"...","ko":"..."}]}\n\n';
-   const r=await sp.json(nm?NM+"묶음 수: "+src.length/3+"\n\n"+src.map((s,i)=>i%3?s:"["+(i/3+1)+"]\n"+s).join("\n"):'다음 일본어 가사의 각 줄을 처리해 주세요.\n규칙: 1) 원문 글자는 절대 바꾸거나 빼거나 더하지 말 것. 2) 한자 단어 바로 뒤에 (읽기|한국어 뜻) 형식으로 붙일 것. 예: 明日(あした|내일)も君(きみ|너)に会(あ|만나다)いたい. 동사와 형용사는 한자 부분에만 붙이고 뒤의 히라가나는 그대로 둘 것. 읽기는 히라가나로 쓰고, 뜻 안에는 괄호와 | 를 쓰지 말 것. 3) 줄마다 자연스러운 한국어 번역을 쓸 것. 4) 입력 줄 수와 같은 수의 줄을 JSON으로만 답할 것: {"lines":[{"ruby":"...","ko":"..."}]}\n\n'+src.join("\n"));
+  try{const nm=$("#nm").checked,G=nm?group(src.join("\n"),"3"):null;if(nm&&!G.length)throw 1;
+   const NM='다음은 노래 가사 줄 목록입니다. 각 줄은 [번호]로 시작합니다. 일본어 줄은 복사하면서 한자 바로 뒤에 후리가나가 그대로 붙어 있을 수 있습니다(예: "漢字かんじ"처럼 한자 뒤에 읽기가 이어 붙은 형태). 영어만으로 된 줄도 있습니다.\n규칙: 1) 붙어 있는 후리가나를 분리해 한자 단어 바로 뒤에 (읽기|한국어 뜻) 형식으로 바꿀 것. 예: 明日(あした|내일). 읽기는 입력에 적힌 후리가나를 그대로 쓰고 새로 추측하지 말 것. 원문 글자(한자, 히라가나, 가타카나, 영어)는 바꾸지 말 것. 2) 뜻은 짧은 한국어 단어로 직접 채울 것(뜻 안에 괄호와 | 금지). 3) 영어 등 일본어가 아닌 부분은 그대로 둘 것. 4) [번호]는 빼고, 입력 줄 수와 같은 수를 같은 순서로 JSON으로만 답할 것: {"lines":[{"ruby":"..."}]}\n\n';
+   const r=await sp.json(nm?NM+"줄 수: "+G.length+"\n\n"+G.map((g,i)=>"["+(i+1)+"] "+g.jp).join("\n"):'다음 일본어 가사의 각 줄을 처리해 주세요.\n규칙: 1) 원문 글자는 절대 바꾸거나 빼거나 더하지 말 것. 2) 한자 단어 바로 뒤에 (읽기|한국어 뜻) 형식으로 붙일 것. 예: 明日(あした|내일)も君(きみ|너)に会(あ|만나다)いたい. 동사와 형용사는 한자 부분에만 붙이고 뒤의 히라가나는 그대로 둘 것. 읽기는 히라가나로 쓰고, 뜻 안에는 괄호와 | 를 쓰지 말 것. 3) 줄마다 자연스러운 한국어 번역을 쓸 것. 4) 입력 줄 수와 같은 수의 줄을 JSON으로만 답할 것: {"lines":[{"ruby":"...","ko":"..."}]}\n\n'+src.join("\n"));
    const L=r&&r.lines;if(!Array.isArray(L))throw 0;if(!L.length)throw 2;
    const strip=s=>String(s).replace(/[（(][^）)]*[）)]/g,"");
-   $("#nl").value=L.map(x=>x.ruby).join("\n");$("#nr").value=L.map(x=>x.ko).join("\n");
+   $("#nl").value=L.map(x=>String(x.ruby||"").replace(/^\[\d+\]\s*/,"")).join("\n");$("#nr").value=nm?G.map(g=>g.tr).join("\n"):L.map(x=>x.ko).join("\n");
    const bad=nm?[]:src.map((s,i)=>L[i]&&strip(L[i].ruby)===strip(s)?0:i+1).filter(Boolean);
-   em.style.color="var(--mut)";em.textContent=(L.length!==(nm?src.length/3:src.length)?"줄 수가 달라졌어요(예상 "+(nm?src.length/3:src.length)+"줄, 결과 "+L.length+"줄). 확인해 주세요. ":"")+(bad.length?`원문과 달라진 줄: ${bad.join(", ")}번째. `:"")+"결과를 읽어 보고 틀린 부분을 고친 뒤 저장해 주세요."}
-  catch(e){em.style.color="#a33";em.textContent=e===2?"Claude가 빈 결과를 돌려줬어요. 가사가 길거나 Claude가 응답하지 않은 것일 수 있어요. 몇 줄씩 나눠서 다시 시도해 보세요. (입력한 가사는 그대로 남겨 두었어요.)":e===1?"가사가 3줄씩 묶여 있지 않아요. 줄 수를 확인해 주세요.":e&&e.code==="not_granted"?"허용하지 않아서 실행하지 않았어요.":e&&e.code==="rate_limited"?"잠시 후에 다시 시도해 주세요.":"Claude 응답을 처리하지 못했어요. 다시 시도해 주세요."}};
+   em.style.color="var(--mut)";em.textContent=(L.length!==(nm?G.length:src.length)?"줄 수가 달라졌어요(예상 "+(nm?G.length:src.length)+"줄, 결과 "+L.length+"줄). 확인해 주세요. ":"")+(bad.length?`원문과 달라진 줄: ${bad.join(", ")}번째. `:"")+(nm&&G.some(g=>g.note)?"한국어 줄이 하나뿐이라 번역으로 넣은 줄: "+G.map((g,i)=>g.note?i+1:0).filter(Boolean).join(", ")+"번째. ":"")+"결과를 읽어 보고 틀린 부분을 고친 뒤 저장해 주세요."}
+  catch(e){em.style.color="#a33";em.textContent=e===2?"Claude가 빈 결과를 돌려줬어요. 가사가 길거나 Claude가 응답하지 않은 것일 수 있어요. 몇 줄씩 나눠서 다시 시도해 보세요. (입력한 가사는 그대로 남겨 두었어요.)":e===1?"가사 줄(일본어·영어)을 찾지 못했어요. 가사를 붙여 넣었는지 확인해 주세요.":e&&e.code==="not_granted"?"허용하지 않아서 실행하지 않았어요.":e&&e.code==="rate_limited"?"잠시 후에 다시 시도해 주세요.":"Claude 응답을 처리하지 못했어요. 다시 시도해 주세요."}};
  $("#ns").onclick=async()=>{const t=$("#nt").value.trim(),lines=parseLy($("#nl").value,$("#nr").value);
   if(!t){$("#em").textContent="제목을 입력해 주세요.";return}if(!lines.length){$("#em").textContent="일본어 가사를 입력해 주세요.";return}
   const s=es||{id:"s"+Date.now()};s.title=t;s.artist=$("#na").value.trim();s.lines=lines;const f=$("#ni").files[0];if(f){try{s.img=await toImg(f)}catch(e){}}if(!es)st.songs.push(s);useSong(s.id);if(!es){audio.pause();audio.removeAttribute("src")}save();view="study";render();fillKanji(s)}}

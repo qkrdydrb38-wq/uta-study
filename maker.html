@@ -27,7 +27,7 @@ label{display:flex;gap:6px;align-items:center;min-height:36px}
 .warn{color:var(--warn)}
 #warns div{padding:4px 0;border-bottom:1px solid var(--bd)}
 </style></head><body><div class="wrap">
-<div class="row" style="justify-content:space-between;margin:0"><h1>가사 정리기</h1><button onclick="location.href='./'">← 앱으로</button></div>
+<div class="row" style="justify-content:space-between;margin:0"><h1>가사 정리기</h1><span class="mut">v10</span> <button onclick="location.href='./'">← 앱으로</button></div>
 <div class="mut">붙여 넣은 가사를 UTA STUDY 앱에 넣을 수 있는 형태(漢字(よみ))로 정리해요. 앱 안의 일본어 사전을 쓰고, Claude는 쓰지 않아요. 직접 쓴 가사나 이용할 권리가 있는 가사만 개인 공부용으로 넣어 주세요.</div>
 
 <div class="grid">
@@ -35,7 +35,7 @@ label{display:flex;gap:6px;align-items:center;min-height:36px}
  <h2>1. 붙여 넣기</h2>
  <div class="row"><input id="ti" class="in" placeholder="노래 제목" style="flex:2;min-width:160px"><input id="ar" class="in" placeholder="가수 (선택)" style="flex:1;min-width:120px"></div>
  <div class="row">형식
-  <select id="mode" style="min-height:44px"><option value="3">일본어 / 발음 / 번역 (3줄씩)</option><option value="2">일본어 / 번역 (2줄씩)</option><option value="1">일본어만</option></select></div>
+  <select id="mode" style="min-height:44px"><option value="3">가사 / 발음 / 번역 (영어 줄이 섞여도 돼요)</option><option value="2">일본어 / 번역 (2줄씩)</option><option value="1">일본어만</option></select></div>
  <label><input type="checkbox" id="stuck" checked> 한자 뒤에 읽기가 붙어서 복사됨 (예: 漢字かんじ)</label>
  <textarea id="src" class="in" rows="16" placeholder="여기에 붙여 넣으세요.&#10;예)&#10;明日あしたも君きみに会あいたい&#10;아시타모 키미니 아이타이&#10;내일도 너를 만나고 싶어"></textarea>
  <div class="row"><button class="pri" id="go">🪄 정리하기</button><button id="clr">지우기</button></div>
@@ -71,22 +71,24 @@ const FURI_ERR={nolib:"lib/kuromoji.js 파일을 찾을 수 없어요. GitHub의
  notgz:"사전 파일의 형식이 예상과 달라요. .dat.gz 파일을 풀지 않고 받은 그대로 올렸는지 확인해 주세요.",
  crash:"사전을 여는 중 오류가 났어요. 앱의 노래 추가 화면에서 「🛠 사전 점검」을 눌러 결과를 알려 주세요.",
  build:"사전을 여는 중 오류가 났어요. 앱의 노래 추가 화면에서 「🛠 사전 점검」을 눌러 결과를 알려 주세요."};
-setTimeout(()=>fwCall("load").catch(()=>{}),300); // 화면을 멈추지 않고 사전을 미리 준비
 
 // ===== 붙여 넣은 글을 「일본어 줄 + 번역 줄」 묶음으로 나누기 =====
-const hasKana=l=>/[぀-ヿ]/.test(l),hasKanji=l=>/[一-龯]/.test(l),hasHangul=l=>/[가-힣]/.test(l);
-const isJP=l=>hasKana(l)||(hasKanji(l)&&!hasHangul(l));
+const hasKana=l=>/[\u3040-\u30ff]/.test(l),hasKanji=l=>/[\u4e00-\u9faf]/.test(l),hasHangul=l=>/[\uac00-\ud7a3]/.test(l),hasLatin=l=>/[A-Za-z]/.test(l);
+const isLyric=l=>hasKana(l)||hasKanji(l)&&!hasHangul(l)||hasLatin(l)&&!hasHangul(l);
 function group(text,mode){const out=[];let cur=null;
  for(const raw of text.split("\n")){const l=raw.trim();if(!l)continue;
-  if(isJP(l)){cur={jp:l,ko:[]};out.push(cur)}else if(cur)cur.ko.push(l)}
+  if(isLyric(l)){const en=!hasKana(l)&&!hasKanji(l);
+   if(en&&cur&&cur.en&&!cur.ko.length&&cur.jp.replace(/\s+/g," ").toLowerCase()===l.replace(/\s+/g," ").toLowerCase()){cur.dup=true;continue} // 영어 줄이 발음 줄로 한 번 더 나온 경우 (남은 한국어 줄은 번역)
+   cur={jp:l,ko:[],en};out.push(cur)}
+  else if(cur)cur.ko.push(l)}
  return out.map(g=>{let tr="",note="";
-  if(mode==="3"){if(g.ko.length>=2)tr=g.ko[g.ko.length-1];else if(g.ko.length===1){tr=g.ko[0];note="한국어 줄이 하나뿐이라 번역으로 넣었어요. 발음 줄이면 지워 주세요"}}
+  if(mode==="3"){if(g.ko.length>=2)tr=g.ko[g.ko.length-1];else if(g.ko.length===1){tr=g.ko[0];if(!g.dup)note=(g.en?"영어 줄":"이 줄")+" 아래 한국어 줄이 하나뿐이라 번역으로 넣었어요. 발음 줄이면 지워 주세요"}}
   else if(mode==="2")tr=g.ko.join(" ");
-  return{jp:g.jp,tr,note}})}
+  return{jp:g.jp,tr,note,en:g.en}})}
 
 // ===== 정리하기 =====
 $("#go").onclick=async()=>{const msg=$("#msg"),mode=$("#mode").value,gs=group($("#src").value,mode);
- if(!gs.length){msg.className="warn";msg.textContent="일본어 줄을 찾지 못했어요. 가사를 붙여 넣었는지 확인해 주세요.";return}
+ if(!gs.length){msg.className="warn";msg.textContent="가사 줄(일본어·영어)을 찾지 못했어요. 가사를 붙여 넣었는지 확인해 주세요.";return}
  msg.className="mut";$("#go").disabled=true;
  const t0=Date.now(),iv=setInterval(()=>{msg.textContent="정리하는 중이에요... "+Math.round((Date.now()-t0)/1000)+"초 (처음 한 번은 사전을 준비하느라 오래 걸릴 수 있어요. 그동안 화면은 멈추지 않아요)"},1000);
  msg.textContent="정리하는 중이에요...";
