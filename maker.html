@@ -25,9 +25,12 @@ textarea.in{font-family:"Hiragino Mincho ProN","Noto Serif JP","Yu Mincho",serif
 label{display:flex;gap:6px;align-items:center;min-height:36px}
 #msg{min-height:22px;margin:6px 0;white-space:pre-wrap}
 .warn{color:var(--warn)}
-#warns div{padding:4px 0;border-bottom:1px solid var(--bd)}
+#warns .it{padding:8px 0;border-bottom:1px solid var(--bd)}
+#warns .it.done{opacity:.45}
+#warns .it input{min-height:40px;border:1px solid var(--bd);border-radius:10px;padding:0 8px;background:var(--bg);width:9em}
+#warns .seg{font-family:"Hiragino Mincho ProN","Noto Serif JP",serif;font-size:18px;color:var(--warn)}
 </style></head><body><div class="wrap">
-<div class="row" style="justify-content:space-between;margin:0"><h1>가사 정리기</h1><span class="mut">v12</span> <button onclick="location.href='./'">← 앱으로</button></div>
+<div class="row" style="justify-content:space-between;margin:0"><h1>가사 정리기</h1><span class="mut">v13</span> <button onclick="location.href='./'">← 앱으로</button></div>
 <div class="mut">붙여 넣은 가사를 UTA STUDY 앱에 넣을 수 있는 형태(漢字(よみ))로 정리해요. 앱 안의 일본어 사전을 쓰고, Claude는 쓰지 않아요. 직접 쓴 가사나 이용할 권리가 있는 가사만 개인 공부용으로 넣어 주세요.</div>
 
 <div class="grid">
@@ -95,14 +98,42 @@ $("#go").onclick=async()=>{const msg=$("#msg"),mode=$("#mode").value,gs=group($(
  try{const r=await Promise.race([fwCall("namu",gs.map(g=>g.jp),{stuck:$("#stuck").checked}),new Promise((_,rj)=>setTimeout(()=>rj({code:"timeout"}),180000))]);
   clearInterval(iv);
   $("#ly").value=r.lines.map(x=>x.text).join("\n");$("#tr").value=gs.map(g=>g.tr).join("\n");
-  const w=[];r.lines.forEach((x,i)=>{if(x.warn.length)w.push(`<div><b>${i+1}번째 줄</b>: 「${esc(x.warn.join("」, 「"))}」 부분은 자동으로 읽기를 붙이지 못해 원래 글자 그대로 두었어요. 직접 漢字(よみ) 형태로 고쳐 주세요.</div>`);if(gs[i].note)w.push(`<div><b>${i+1}번째 줄</b>: ${esc(gs[i].note)}.</div>`)});
-  $("#warns").innerHTML=w.length?'<div class="warn" style="margin-top:8px">확인이 필요한 곳 '+w.length+'개</div>'+w.join(""):'<div style="margin-top:8px">자동으로 확인하지 못한 곳은 없어요. 그래도 읽기가 맞는지 한 번 훑어봐 주세요.</div>';
+  WARN=[];r.lines.forEach((x,i)=>{x.warn.forEach(seg=>{const k=(seg.match(/^[一-龯々〆]+/)||[""])[0];WARN.push({t:"ly",line:i,seg,k,h:seg.slice(k.length)})});if(gs[i].note)WARN.push({t:"tr",line:i,note:gs[i].note})});
+  drawWarns();
   msg.textContent=`${gs.length}줄을 정리했어요 (${Math.round((Date.now()-t0)/1000)}초). 오른쪽에서 확인하고 고친 뒤 앱으로 보내세요.`}
  catch(e){clearInterval(iv);msg.className="warn";const c=e&&e.code;
   msg.textContent=c==="timeout"?"3분이 지나도 사전이 준비되지 않아요. 앱의 노래 추가 화면에서 「🛠 사전 점검」을 눌러 결과를 알려 주세요.":(FURI_ERR[c]||FURI_ERR.build)+(e&&e.msg?" ("+e.msg+")":"")}
  finally{$("#go").disabled=false}};
-$("#clr").onclick=()=>{$("#src").value="";$("#ly").value="";$("#tr").value="";$("#warns").innerHTML="";$("#msg").textContent=""};
+$("#clr").onclick=()=>{$("#src").value="";$("#ly").value="";$("#tr").value="";WARN=[];$("#warns").innerHTML="";$("#msg").textContent=""};
 
+// ===== 확인이 필요한 곳: 누르면 그 위치로 가고, 읽기를 입력해 바로 고칠 수 있음 =====
+let WARN=[],wPos=-1;
+function lineStart(txt,n){let p=0;for(let i=0;i<n;i++){const q=txt.indexOf("\n",p);if(q<0)return-1;p=q+1}return p}
+function goTo(w){const ta=$("#"+w.t),txt=ta.value,ls=lineStart(txt,w.line);if(ls<0)return;
+ const le=txt.indexOf("\n",ls)<0?txt.length:txt.indexOf("\n",ls);let a=ls,b=le;
+ if(w.seg){const f=txt.slice(ls,le).indexOf(w.seg);if(f>=0){a=ls+f;b=a+w.seg.length}}
+ ta.focus();ta.setSelectionRange(a,b);
+ const lh=parseFloat(getComputedStyle(ta).lineHeight)||28;ta.scrollTop=Math.max(0,w.line*lh-ta.clientHeight/3);
+ ta.scrollIntoView({block:"center",behavior:"smooth"})}
+function fixWarn(n){const w=WARN[n],inp=$("#wi"+n),y=(inp&&inp.value||"").trim();
+ if(!y){inp.focus();return}
+ const ta=$("#ly"),ls=ta.value.split("\n"),line=ls[w.line]||"",f=line.indexOf(w.seg);
+ if(f<0){$("#wm"+n).textContent="그 줄에서 이 부분을 찾지 못했어요. 직접 고쳐 주세요.";return}
+ const yh=y.replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60));
+ const rest=w.h.startsWith(yh)?w.h.slice(yh.length):w.h; // 붙어 온 읽기라면 떼어 냄
+ ls[w.line]=line.slice(0,f)+w.k+"("+yh+")"+rest+line.slice(f+w.seg.length);ta.value=ls.join("\n");
+ w.done=true;w.fixed=w.k+"("+yh+")"+rest;drawWarns()}
+function drawWarns(){const left=WARN.filter(w=>!w.done).length;
+ if(!WARN.length){$("#warns").innerHTML='<div style="margin-top:8px">자동으로 확인하지 못한 곳은 없어요. 그래도 읽기가 맞는지 한 번 훑어봐 주세요.</div>';return}
+ $("#warns").innerHTML=`<div class="row" style="margin-top:10px"><b class="${left?"warn":""}">확인이 필요한 곳 ${left}개 남음</b>${left?'<button id="wn">▶ 다음 위치로</button>':'<span>모두 확인했어요 👍</span>'}</div>`+
+  WARN.map((w,n)=>`<div class="it ${w.done?"done":""}"><b>${w.line+1}번째 줄</b> `+(w.t==="ly"
+   ?`<span class="seg">${esc(w.done?w.fixed:w.seg)}</span>${w.done?" ✓ 고쳤어요":`<div class="row"><button data-g="${n}">📍 위치 보기</button><input id="wi${n}" placeholder="${esc(w.k)}의 읽기 (히라가나)"><button class="pri" data-f="${n}">적용</button><span class="mut">읽기만 적으면 붙어 온 글자는 알아서 떼어 내요</span></div><div id="wm${n}" class="warn"></div>`}`
+   :`${esc(w.note)}.${w.done?" ✓":`<div class="row"><button data-g="${n}">📍 번역 칸에서 보기</button><button data-ok="${n}">괜찮아요</button></div>`}`)+`</div>`).join("");
+ document.querySelectorAll("#warns [data-g]").forEach(b=>b.onclick=()=>{wPos=+b.dataset.g;goTo(WARN[wPos])});
+ document.querySelectorAll("#warns [data-f]").forEach(b=>b.onclick=()=>fixWarn(+b.dataset.f));
+ document.querySelectorAll("#warns input[id^=wi]").forEach(i=>i.onkeydown=e=>{if(e.key==="Enter")fixWarn(+i.id.slice(2))});
+ document.querySelectorAll("#warns [data-ok]").forEach(b=>b.onclick=()=>{WARN[+b.dataset.ok].done=true;drawWarns()});
+ const nb=$("#wn");if(nb)nb.onclick=()=>{const idx=WARN.map((w,n)=>w.done?-1:n).filter(n=>n>=0);wPos=idx.find(n=>n>wPos);if(wPos===undefined)wPos=idx[0];goTo(WARN[wPos]);const inp=$("#wi"+wPos);if(inp)setTimeout(()=>inp.scrollIntoView({block:"nearest"}),400)}}
 // ===== 앱 형식으로 바꾸기 (앱의 노래 추가와 같은 방식) =====
 function parseLy(txt,tr){const T0=tr.split("\n").map(s=>s.trim()),LN=txt.split("\n").map(s=>s.trim()).filter(Boolean),T=T0.length===LN.length?T0:T0.filter(Boolean),re=/([一-龯々〆ヶ]+)[（(]([^）)|]+)(?:\|([^）)]+))?[）)]/g;
  return LN.map((ln,n)=>{const w=[];let p=0,m;re.lastIndex=0;while((m=re.exec(ln))){if(m.index>p)w.push([ln.slice(p,m.index),"","",""]);w.push([m[1],m[2],m[3]||"",""]);p=re.lastIndex}if(p<ln.length)w.push([ln.slice(p),"","",""]);return{k:T[n]||"",w}})}
