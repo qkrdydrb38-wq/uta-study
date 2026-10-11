@@ -30,7 +30,7 @@ label{display:flex;gap:6px;align-items:center;min-height:36px}
 #warns .it input{min-height:40px;border:1px solid var(--bd);border-radius:10px;padding:0 8px;background:var(--bg);width:9em}
 #warns .seg{font-family:"Hiragino Mincho ProN","Noto Serif JP",serif;font-size:18px;color:var(--warn)}
 </style></head><body><div class="wrap">
-<div class="row" style="justify-content:space-between;margin:0"><h1>가사 정리기</h1><span class="mut">v13</span> <button onclick="location.href='./'">← 앱으로</button></div>
+<div class="row" style="justify-content:space-between;margin:0"><h1>가사 정리기</h1><span class="mut">v14</span> <button onclick="location.href='./'">← 앱으로</button></div>
 <div class="mut">붙여 넣은 가사를 UTA STUDY 앱에 넣을 수 있는 형태(漢字(よみ))로 정리해요. 앱 안의 일본어 사전을 쓰고, Claude는 쓰지 않아요. 직접 쓴 가사나 이용할 권리가 있는 가사만 개인 공부용으로 넣어 주세요.</div>
 
 <div class="grid">
@@ -48,6 +48,8 @@ label{display:flex;gap:6px;align-items:center;min-height:36px}
  <h2>2. 확인하고 고치기</h2>
  <div class="mut">일본어 가사 (앱 형식: 漢字(よみ) 또는 漢字(よみ|뜻))</div>
  <textarea id="ly" class="in" rows="9"></textarea>
+ <div class="mut" style="margin-top:8px">한국어 발음 (가사와 같은 줄 순서, 공부할 때 볼 수 있어요)</div>
+ <textarea id="pr" class="in" rows="5"></textarea>
  <div class="mut" style="margin-top:8px">한국어 번역 (가사와 같은 줄 순서)</div>
  <textarea id="tr" class="in" rows="6"></textarea>
  <div id="warns" class="mut"></div>
@@ -84,10 +86,10 @@ function group(text,mode){const out=[];let cur=null;
    if(en&&cur&&cur.en&&!cur.ko.length&&cur.jp.replace(/\s+/g," ").toLowerCase()===l.replace(/\s+/g," ").toLowerCase()){cur.dup=true;continue} // 영어 줄이 발음 줄로 한 번 더 나온 경우 (남은 한국어 줄은 번역)
    cur={jp:l,ko:[],en};out.push(cur)}
   else if(cur)cur.ko.push(l)}
- return out.map(g=>{let tr="",note="";
-  if(mode==="3"){if(g.ko.length>=2)tr=g.ko[g.ko.length-1];else if(g.ko.length===1){tr=g.ko[0];if(!g.dup)note=(g.en?"영어 줄":"이 줄")+" 아래 한국어 줄이 하나뿐이라 번역으로 넣었어요. 발음 줄이면 지워 주세요"}}
+ return out.map(g=>{let tr="",note="",pr="";
+  if(mode==="3"){if(g.ko.length>=2){tr=g.ko[g.ko.length-1];pr=g.ko[0]}else if(g.ko.length===1){tr=g.ko[0];if(!g.dup)note=(g.en?"영어 줄":"이 줄")+" 아래 한국어 줄이 하나뿐이라 번역으로 넣었어요. 발음 줄이면 지워 주세요"}}
   else if(mode==="2")tr=g.ko.join(" ");
-  return{jp:g.jp,tr,note,en:g.en}})}
+  return{jp:g.jp,tr,pr,note,en:g.en}})}
 
 // ===== 정리하기 =====
 $("#go").onclick=async()=>{const msg=$("#msg"),mode=$("#mode").value,gs=group($("#src").value,mode);
@@ -97,14 +99,14 @@ $("#go").onclick=async()=>{const msg=$("#msg"),mode=$("#mode").value,gs=group($(
  msg.textContent="정리하는 중이에요...";
  try{const r=await Promise.race([fwCall("namu",gs.map(g=>g.jp),{stuck:$("#stuck").checked}),new Promise((_,rj)=>setTimeout(()=>rj({code:"timeout"}),180000))]);
   clearInterval(iv);
-  $("#ly").value=r.lines.map(x=>x.text).join("\n");$("#tr").value=gs.map(g=>g.tr).join("\n");
-  WARN=[];r.lines.forEach((x,i)=>{x.warn.forEach(seg=>{const k=(seg.match(/^[一-龯々〆]+/)||[""])[0];WARN.push({t:"ly",line:i,seg,k,h:seg.slice(k.length)})});if(gs[i].note)WARN.push({t:"tr",line:i,note:gs[i].note})});
+  $("#ly").value=r.lines.map(x=>x.text).join("\n");$("#tr").value=gs.map(g=>g.tr).join("\n");$("#pr").value=gs.map(g=>g.pr||"").join("\n");
+  WARN=[];r.lines.forEach((x,i)=>{x.warn.forEach(o=>{const seg=typeof o==="string"?o:o.seg,k=(seg.match(/^[一-龯々〆]+/)||[""])[0];WARN.push({t:"ly",line:i,seg,k,h:seg.slice(k.length),sug:(o&&o.sug)||"",pr:gs[i].pr||""})});if(gs[i].note)WARN.push({t:"tr",line:i,note:gs[i].note})});
   drawWarns();
   msg.textContent=`${gs.length}줄을 정리했어요 (${Math.round((Date.now()-t0)/1000)}초). 오른쪽에서 확인하고 고친 뒤 앱으로 보내세요.`}
  catch(e){clearInterval(iv);msg.className="warn";const c=e&&e.code;
   msg.textContent=c==="timeout"?"3분이 지나도 사전이 준비되지 않아요. 앱의 노래 추가 화면에서 「🛠 사전 점검」을 눌러 결과를 알려 주세요.":(FURI_ERR[c]||FURI_ERR.build)+(e&&e.msg?" ("+e.msg+")":"")}
  finally{$("#go").disabled=false}};
-$("#clr").onclick=()=>{$("#src").value="";$("#ly").value="";$("#tr").value="";WARN=[];$("#warns").innerHTML="";$("#msg").textContent=""};
+$("#clr").onclick=()=>{$("#src").value="";$("#ly").value="";$("#tr").value="";$("#pr").value="";WARN=[];$("#warns").innerHTML="";$("#msg").textContent=""};
 
 // ===== 확인이 필요한 곳: 누르면 그 위치로 가고, 읽기를 입력해 바로 고칠 수 있음 =====
 let WARN=[],wPos=-1;
@@ -123,21 +125,25 @@ function fixWarn(n){const w=WARN[n],inp=$("#wi"+n),y=(inp&&inp.value||"").trim()
  const rest=w.h.startsWith(yh)?w.h.slice(yh.length):w.h; // 붙어 온 읽기라면 떼어 냄
  ls[w.line]=line.slice(0,f)+w.k+"("+yh+")"+rest+line.slice(f+w.seg.length);ta.value=ls.join("\n");
  w.done=true;w.fixed=w.k+"("+yh+")"+rest;drawWarns()}
+// 읽기 후보: 사전 추천 + 한자 뒤에 붙어 온 글자에서 앞부분을 잘라 만든 후보 (누르면 바로 적용)
+function cands(w){const out=[],seen=new Set(),add=(y,tag)=>{if(!y||seen.has(y))return;seen.add(y);const rest=w.h.startsWith(y)?w.h.slice(y.length):w.h;out.push({y,label:w.k+"("+y+")"+rest+(tag?" "+tag:"")})};
+ add(w.sug,"⭐사전 추천");for(let i=1;i<=Math.min(w.h.length,6);i++)add(w.h.slice(0,i));return out}
 function drawWarns(){const left=WARN.filter(w=>!w.done).length;
  if(!WARN.length){$("#warns").innerHTML='<div style="margin-top:8px">자동으로 확인하지 못한 곳은 없어요. 그래도 읽기가 맞는지 한 번 훑어봐 주세요.</div>';return}
  $("#warns").innerHTML=`<div class="row" style="margin-top:10px"><b class="${left?"warn":""}">확인이 필요한 곳 ${left}개 남음</b>${left?'<button id="wn">▶ 다음 위치로</button>':'<span>모두 확인했어요 👍</span>'}</div>`+
   WARN.map((w,n)=>`<div class="it ${w.done?"done":""}"><b>${w.line+1}번째 줄</b> `+(w.t==="ly"
-   ?`<span class="seg">${esc(w.done?w.fixed:w.seg)}</span>${w.done?" ✓ 고쳤어요":`<div class="row"><button data-g="${n}">📍 위치 보기</button><input id="wi${n}" placeholder="${esc(w.k)}의 읽기 (히라가나)"><button class="pri" data-f="${n}">적용</button><span class="mut">읽기만 적으면 붙어 온 글자는 알아서 떼어 내요</span></div><div id="wm${n}" class="warn"></div>`}`
+   ?`<span class="seg">${esc(w.done?w.fixed:w.seg)}</span>${w.done?" ✓ 고쳤어요":`${w.pr?`<div class="mut">발음 참고: <b>${esc(w.pr)}</b></div>`:""}<div class="row"><span class="mut">맞는 것을 누르세요:</span>${cands(w).map(c=>`<button data-c="${n}" data-y="${esc(c.y)}">${esc(c.label)}</button>`).join("")}</div><div class="row"><button data-g="${n}">📍 위치 보기</button><input id="wi${n}" placeholder="직접 입력 (히라가나)"><button class="pri" data-f="${n}">적용</button><span class="mut">후보에 없으면 직접 적어도 돼요</span></div><div id="wm${n}" class="warn"></div>`}`
    :`${esc(w.note)}.${w.done?" ✓":`<div class="row"><button data-g="${n}">📍 번역 칸에서 보기</button><button data-ok="${n}">괜찮아요</button></div>`}`)+`</div>`).join("");
  document.querySelectorAll("#warns [data-g]").forEach(b=>b.onclick=()=>{wPos=+b.dataset.g;goTo(WARN[wPos])});
+ document.querySelectorAll("#warns [data-c]").forEach(b=>b.onclick=()=>{const n=+b.dataset.c;$("#wi"+n).value=b.dataset.y;fixWarn(n)});
  document.querySelectorAll("#warns [data-f]").forEach(b=>b.onclick=()=>fixWarn(+b.dataset.f));
  document.querySelectorAll("#warns input[id^=wi]").forEach(i=>i.onkeydown=e=>{if(e.key==="Enter")fixWarn(+i.id.slice(2))});
  document.querySelectorAll("#warns [data-ok]").forEach(b=>b.onclick=()=>{WARN[+b.dataset.ok].done=true;drawWarns()});
  const nb=$("#wn");if(nb)nb.onclick=()=>{const idx=WARN.map((w,n)=>w.done?-1:n).filter(n=>n>=0);wPos=idx.find(n=>n>wPos);if(wPos===undefined)wPos=idx[0];goTo(WARN[wPos]);const inp=$("#wi"+wPos);if(inp)setTimeout(()=>inp.scrollIntoView({block:"nearest"}),400)}}
 // ===== 앱 형식으로 바꾸기 (앱의 노래 추가와 같은 방식) =====
-function parseLy(txt,tr){const T0=tr.split("\n").map(s=>s.trim()),LN=txt.split("\n").map(s=>s.trim()).filter(Boolean),T=T0.length===LN.length?T0:T0.filter(Boolean),re=/([一-龯々〆ヶ]+)[（(]([^）)|]+)(?:\|([^）)]+))?[）)]/g;
- return LN.map((ln,n)=>{const w=[];let p=0,m;re.lastIndex=0;while((m=re.exec(ln))){if(m.index>p)w.push([ln.slice(p,m.index),"","",""]);w.push([m[1],m[2],m[3]||"",""]);p=re.lastIndex}if(p<ln.length)w.push([ln.slice(p),"","",""]);return{k:T[n]||"",w}})}
-function makeSong(){const m2=$("#msg2"),title=$("#ti").value.trim(),lines=parseLy($("#ly").value,$("#tr").value);
+function parseLy(txt,tr,pr){const T0=tr.split("\n").map(s=>s.trim()),LN=txt.split("\n").map(s=>s.trim()).filter(Boolean),T=T0.length===LN.length?T0:T0.filter(Boolean),P0=(pr||"").split("\n").map(s=>s.trim()),P=P0.length===LN.length?P0:P0.filter(Boolean),re=/([一-龯々〆ヶ]+)[（(]([^）)|]+)(?:\|([^）)]+))?[）)]/g;
+ return LN.map((ln,n)=>{const w=[];let p=0,m;re.lastIndex=0;while((m=re.exec(ln))){if(m.index>p)w.push([ln.slice(p,m.index),"","",""]);w.push([m[1],m[2],m[3]||"",""]);p=re.lastIndex}if(p<ln.length)w.push([ln.slice(p),"","",""]);return{k:T[n]||"",p:P[n]||"",w}})}
+function makeSong(){const m2=$("#msg2"),title=$("#ti").value.trim(),lines=parseLy($("#ly").value,$("#tr").value,$("#pr").value);
  if(!title){m2.className="warn";m2.textContent="노래 제목을 입력해 주세요.";$("#ti").focus();return null}
  if(!lines.length){m2.className="warn";m2.textContent="먼저 「🪄 정리하기」를 눌러 가사를 만들어 주세요.";return null}
  m2.className="mut";return{id:"s"+Date.now(),title,artist:$("#ar").value.trim(),lines}}

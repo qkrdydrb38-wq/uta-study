@@ -73,7 +73,7 @@ function detach(t, line) {
         const ann = annotate(t, s + H), m = ann.match(/^[^(]*\(([^)|]+)\)/), rk = m ? m[1] : "";
         const looksStuck = rk && noDaku(H).startsWith(noDaku(rk).slice(0, Math.min(2, rk.length)));
         if (rk && !looksStuck) out += ann;
-        else { out += s + H; warn.push(s + H); }
+        else { out += s + H; const r0 = rd(t, s); warn.push({ seg: s + H, sug: hasK(r0) ? "" : r0 }); } // sug: 사전이 아는 한자 읽기(추천)
       }
       i++; continue;
     }
