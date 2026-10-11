@@ -42,7 +42,7 @@ body.focus main{height:100%;padding:6px}
 body.focus #fbtn{display:block}
 .lytb{position:sticky;top:-14px;z-index:3;background:var(--card);margin:-14px -14px 8px;padding:10px 14px;border-bottom:1px solid var(--bd);border-radius:16px 16px 0 0}
 @media(max-width:900px){.study{grid-template-columns:1fr;height:auto}.study .col{overflow:visible}.lytb{top:0;border-radius:0}}
-#ai,#nml,#aih,#tp{display:none!important}
+#ai,#nml,#aih,#tp,#tro{display:none!important}
 .apphint{display:block!important}
 </style></head><body>
 <header><b>UTA STUDY</b>
@@ -265,7 +265,7 @@ function rLog(){st.lr=st.lr||{};const rows=[];
 async function saveFile(n,d){const m=$("#msg");try{const dl=typeof claude!=="undefined"?await claude.use("downloads"):null;if(dl){await dl.save({filename:n,data:d})}else{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([d]));a.download=n;document.body.appendChild(a);a.click();a.remove()}m.textContent="저장했어요. 다운로드 폴더를 확인해 주세요."}catch(e){m.textContent=e&&e.code==="declined"?"저장을 취소했어요.":"파일을 저장하지 못했어요."}}
 // ===== 설정 / 백업 =====
 function rSet(){
- $("#m").innerHTML=`<div class="col" style="max-width:700px;margin:auto"><h3>설정 <span class="mut">(앱 버전 v17)</span></h3>
+ $("#m").innerHTML=`<div class="col" style="max-width:700px;margin:auto"><h3>설정 <span class="mut">(앱 버전 v18)</span></h3>
  <div class="row"><button id="dk">${st.set.dark?"☀️ 밝은 테마":"🌙 어두운 테마"}</button></div>
  <h3>백업</h3><div class="mut">브라우저 데이터를 지우면 저장한 단어가 사라질 수 있어요. 가끔 백업 파일을 받아 두세요.</div>
  <div class="row"><button id="ex" class="pri">백업 파일 받기</button><button id="cv">단어장 CSV 받기</button><input type="file" id="im" accept=".json"></div><div id="msg" class="mut"></div>
@@ -311,6 +311,17 @@ function group(text,mode){const out=[];let cur=null;
   if(mode==="3"){if(g.ko.length>=2){tr=g.ko[g.ko.length-1];pr=g.ko[0]}else if(g.ko.length===1){tr=g.ko[0];if(!g.dup)note=(g.en?"영어 줄":"이 줄")+" 아래 한국어 줄이 하나뿐이라 번역으로 넣었어요. 발음 줄이면 지워 주세요"}}
   else if(mode==="2")tr=g.ko.join(" ");
   return{jp:g.jp,tr,pr,note,en:g.en}})}
+// ===== 이야기·문장: 붙여 넣은 글을 문장마다 한 줄로 나눔 =====
+function splitStory(text){
+ const t=text.replace(/\r/g,"").split(/\n+/).map(x=>x.trim()).filter(Boolean).join("");
+ // 복사하면서 일본어 글자 사이에 끼어든 띄어쓰기를 없앰 (예: 「どんで す」 → 「どんです」)
+ const c=t.replace(/([、-ヿ一-龯！-～])[ 　\t]+(?=[、-ヿ一-龯！-～])/g,"$1");
+ const out=[];let cur="";
+ for(let i=0;i<c.length;i++){const ch=c[i];cur+=ch;
+  if("。！？!?".includes(ch)){if(c[i+1]==="」"||c[i+1]==="』")continue;out.push(cur.trim());cur=""}
+  else if(ch==="」"||ch==="』"){if(/[。！？!?]$/.test(cur.slice(0,-1))||c[i+1]==="「"){out.push(cur.trim());cur=""}}}
+ if(cur.trim())out.push(cur.trim());
+ return out.filter(x=>/[぀-ヿ一-龯]/.test(x))}
 // ===== 후리가나 자동 붙이기: 사전은 furi-worker.js(일꾼)가 화면 뒤에서 불러와요. 그래서 화면이 멈추지 않아요. =====
 const DICT_FILES=["base","check","tid","tid_pos","tid_map","cc","unk","unk_pos","unk_map","unk_char","unk_compat","unk_invoke"].map(x=>x+".dat.gz");
 let fw=null,fwId=0,fwP={};
@@ -332,14 +343,14 @@ const reEsc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
 function furiTok(sf,rd){if(!hasK(sf)||!rd||rd==="*")return sf;const y=kata2hira(rd),parts=sf.match(/[一-龯々〆]+|[^一-龯々〆]+/g);
  const m=y.match(new RegExp("^"+parts.map(p=>hasK(p)?"(.+?)":reEsc(kata2hira(p))).join("")+"$"));
  if(!m)return sf;let k=1;return parts.map(p=>hasK(p)?p+"("+m[k++]+")":p).join("")}
-function rAdd(eid){const es=eid?st.songs.find(s=>s.id===eid):null,ta="width:100%;box-sizing:border-box;border:1px solid var(--bd);border-radius:10px;padding:8px;background:var(--bg);font:inherit;color:var(--tx)";
+function rAdd(eid){let storyMode=false;const es=eid?st.songs.find(s=>s.id===eid):null,ta="width:100%;box-sizing:border-box;border:1px solid var(--bd);border-radius:10px;padding:8px;background:var(--bg);font:inherit;color:var(--tx)";
  $("#m").innerHTML=`<div class="col" style="max-width:800px;margin:auto"><h3>${es?"노래 수정":"노래 추가 (직접 입력)"}</h3>
  <p>제목<br><input id="nt" value="${esc(es?es.title:"")}" style="${ta}"></p><p>가수 (선택)<br><input id="na" value="${esc(es?es.artist||"":"")}" style="${ta}"></p><p>앨범 이미지 (선택)<br><input type="file" id="ni" accept="image/*"></p>
  <p>일본어 가사 (한 줄에 한 문장). 한자 뒤에 괄호로 읽기를, 필요하면 | 뒤에 뜻을 적어요.<br><span class="mut">예: 明日(あした|내일)も君(きみ|너)に会(あ|만나다)いたい</span><br><textarea id="nl" rows="7" style="${ta}">${es?esc(toLy(es)):""}</textarea></p>
  <p>한국어 번역 (선택, 가사와 같은 줄 순서로 한 줄씩)<br><textarea id="nr" rows="5" style="${ta}">${es?esc(es.lines.map(l=>l.k).join("\n")):""}</textarea></p>
  <p>한국어 발음 (선택, 가사와 같은 줄 순서로 한 줄씩)<br><textarea id="np" rows="4" style="${ta}">${es?esc(es.lines.map(l=>l.p||"").join("\n")):""}</textarea></p>
  <div class="mut">직접 쓰거나 이용할 권리가 있는 가사만 넣어 주세요. 음악 파일은 학습 화면에서 선택해요.</div><div id="em" style="color:#a33;margin:6px 0"></div>
- <label class="mut"><input type="checkbox" id="nm"> 나무위키 형식 (가사 줄 / 발음 / 번역, 영어 줄이 섞여도 돼요)</label><div class="row"><button id="mk" onclick="location.href='maker.html'">🪄 가사 정리기</button><button id="af" class="pri">🔤 후리가나 자동 붙이기</button><button id="ad">🛠 사전 점검</button><button id="ai">✨ Claude로 후리가나·뜻·번역 만들기</button></div><div class="mut apphint">🔤 후리가나 자동 붙이기: 일본어 가사만 붙여 넣고 누르면, 앱 안의 사전으로 한자 읽기를 붙여요. 틀릴 수 있으니 확인하고 고쳐 주세요. 뜻과 번역까지 Claude로 만들려면 claude.ai의 UTA STUDY에서 만든 뒤 설정 → 「노래 보내기」/「노래 가져오기」로 옮겨 오세요.</div><div class="mut" id="aih">위 일본어 가사 칸에 가사만 붙여 넣고 누르면, Claude가 읽기·뜻·번역을 채워 줘요. 틀릴 수 있으니 확인 후 저장하세요.</div><div class="row"><button class="pri" id="ns">저장</button><button id="nc">취소</button></div></div>`;
+ <label class="mut"><input type="checkbox" id="nm"> 나무위키 형식 (가사 줄 / 발음 / 번역, 영어 줄이 섞여도 돼요)</label><div class="row"><button id="mk" onclick="location.href='maker.html'">🪄 가사 정리기</button><button id="af" class="pri">🔤 후리가나 자동 붙이기</button><button id="ad">🛠 사전 점검</button><button id="ai">✨ Claude로 후리가나·뜻·번역 만들기</button><button id="tro">✨ Claude로 번역만 만들기</button><button id="sst">📖 문장으로 나누기</button></div><div class="mut apphint">🔤 후리가나 자동 붙이기: 일본어 가사만 붙여 넣고 누르면, 앱 안의 사전으로 한자 읽기를 붙여요. 틀릴 수 있으니 확인하고 고쳐 주세요. 뜻과 번역까지 Claude로 만들려면 claude.ai의 UTA STUDY에서 만든 뒤 설정 → 「노래 보내기」/「노래 가져오기」로 옮겨 오세요.</div><div class="mut" id="aih">위 일본어 가사 칸에 가사만 붙여 넣고 누르면, Claude가 읽기·뜻·번역을 채워 줘요. 틀릴 수 있으니 확인 후 저장하세요.</div><div class="row"><button class="pri" id="ns">저장</button><button id="nc">취소</button></div></div>`;
  $("#nc").onclick=()=>{view="home";render()};
  $("#ad").onclick=async()=>{const em=$("#em");em.style.color="var(--mut)";em.style.whiteSpace="pre-wrap";em.textContent="사전 파일을 하나씩 확인하는 중이에요...";
   let out="",T0=performance.now();
@@ -358,6 +369,23 @@ function rAdd(eid){const es=eid?st.songs.find(s=>s.id===eid):null,ta="width:100%
   catch(e){clearInterval(iv);em.style.color="#a33";const c=e&&e.code;
    if(c==="timeout"){em.textContent="3분이 지나도 사전이 준비되지 않아요. 파일을 점검하는 중...";const bad=await dictCheck();em.textContent=bad.length?"없거나 열리지 않는 파일: "+bad.join(", ")+". lib/dict 폴더에 올라갔는지 확인해 주세요.":"파일은 모두 있어요. 「🛠 사전 점검」을 눌러 결과를 알려 주세요.";return}
    em.textContent=(FURI_ERR[c]||FURI_ERR.build)+(e&&e.msg?" ("+e.msg+")":"")}};
+ if(es&&es.kind==="story")storyMode=true;
+ // 📖 문장으로 나누기: 가사 칸의 글(동화 등)을 문장마다 한 줄로 나눔 (Claude 없이)
+ $("#sst").onclick=()=>{const em=$("#em"),v=$("#nl").value;if(!v.trim()){em.style.color="#a33";em.textContent="먼저 일본어 글을 붙여 넣어 주세요.";return}
+  const ls=splitStory(v);if(!ls.length){em.style.color="#a33";em.textContent="일본어 문장을 찾지 못했어요.";return}
+  $("#nl").value=ls.join("\n");storyMode=true;em.style.color="var(--mut)";em.textContent=ls.length+"개 문장으로 나눴어요. 이야기로 저장돼요 (홈에 📖 표시).";};
+ // ✨ Claude로 번역만 만들기: 가사 칸의 줄마다 한국어 번역을 번역 칸에 채움
+ $("#tro").onclick=async()=>{const em=$("#em"),src=$("#nl").value.split("\n").map(x=>x.trim()).filter(Boolean);
+  if(!src.length){em.style.color="#a33";em.textContent="먼저 일본어 가사나 글을 넣어 주세요.";return}
+  const sp=typeof claude!=="undefined"?await claude.use("sample"):null;
+  if(!sp){em.style.color="#a33";em.textContent="이 화면에서는 Claude 연동을 쓸 수 없어요.";return}
+  em.style.color="var(--mut)";em.textContent="Claude가 번역하는 중이에요. 잠시만 기다려 주세요...";
+  const plain=src.map(x=>x.replace(/[（(][^）)]*[）)]/g,""));
+  try{const r=await sp.json('다음 일본어 문장들을 한국어 학습자가 이해하기 쉽게, 줄마다 자연스러운 한국어로 번역해 주세요. 각 줄은 [번호]로 시작합니다. [번호]는 빼고, 입력 줄 수와 같은 수를 같은 순서로 JSON으로만 답할 것: {"lines":[{"ko":"..."}]}\n\n줄 수: '+plain.length+'\n\n'+plain.map((x,i)=>"["+(i+1)+"] "+x).join("\n"));
+   const L=r&&r.lines;if(!Array.isArray(L)||!L.length)throw 2;
+   $("#nr").value=L.map(x=>String(x&&x.ko||"").replace(/^\[\d+\]\s*/,"")).join("\n");
+   em.textContent=(L.length!==plain.length?"줄 수가 달라졌어요(예상 "+plain.length+"줄, 결과 "+L.length+"줄). 확인해 주세요. ":"")+"번역 칸을 채웠어요. 읽어 보고 고친 뒤 저장해 주세요."}
+  catch(e){em.style.color="#a33";em.textContent=e===2?"Claude가 빈 결과를 돌려줬어요. Claude가 이 글의 번역을 하지 않았을 수 있어요. (입력한 글은 그대로 남겨 두었어요.)":e&&e.code==="not_granted"?"허용하지 않아서 실행하지 않았어요.":e&&e.code==="rate_limited"?"잠시 후에 다시 시도해 주세요.":"Claude 응답을 처리하지 못했어요. 다시 시도해 주세요."}};
  $("#ai").onclick=async()=>{const src=$("#nl").value.split("\n").map(s=>s.trim()).filter(Boolean),em=$("#em");
   if(!src.length){em.style.color="#a33";em.textContent="먼저 일본어 가사를 붙여 넣어 주세요.";return}
   const sp=typeof claude!=="undefined"?await claude.use("sample"):null;
@@ -374,7 +402,7 @@ function rAdd(eid){const es=eid?st.songs.find(s=>s.id===eid):null,ta="width:100%
   catch(e){em.style.color="#a33";em.textContent=e===2?"Claude가 빈 결과를 돌려줬어요. 가사가 길거나 Claude가 응답하지 않은 것일 수 있어요. 몇 줄씩 나눠서 다시 시도해 보세요. (입력한 가사는 그대로 남겨 두었어요.)":e===1?"가사 줄(일본어·영어)을 찾지 못했어요. 가사를 붙여 넣었는지 확인해 주세요.":e&&e.code==="not_granted"?"허용하지 않아서 실행하지 않았어요.":e&&e.code==="rate_limited"?"잠시 후에 다시 시도해 주세요.":"Claude 응답을 처리하지 못했어요. 다시 시도해 주세요."}};
  $("#ns").onclick=async()=>{const t=$("#nt").value.trim(),lines=parseLy($("#nl").value,$("#nr").value,$("#np").value);
   if(!t){$("#em").textContent="제목을 입력해 주세요.";return}if(!lines.length){$("#em").textContent="일본어 가사를 입력해 주세요.";return}
-  const s=es||{id:"s"+Date.now()};s.title=t;s.artist=$("#na").value.trim();s.lines=lines;const f=$("#ni").files[0];if(f){try{s.img=await toImg(f)}catch(e){}}if(!es)st.songs.push(s);useSong(s.id);if(!es){audio.pause();audio.removeAttribute("src")}save();view="study";render();fillKanji(s)}}
+  const s=es||{id:"s"+Date.now()};if(storyMode)s.kind="story";s.title=t;s.artist=$("#na").value.trim();s.lines=lines;const f=$("#ni").files[0];if(f){try{s.img=await toImg(f)}catch(e){}}if(!es)st.songs.push(s);useSong(s.id);if(!es){audio.pause();audio.removeAttribute("src")}save();view="study";render();fillKanji(s)}}
 useSong(st.cur);view="home";render();
 // ===== 넓게 보기: 위쪽 메뉴 줄을 숨겨 공부 화면을 넓게 씀 =====
 function setFocus(on){st.set.focus=on;document.body.classList.toggle("focus",on);save()}
